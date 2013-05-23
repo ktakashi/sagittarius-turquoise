@@ -31,6 +31,7 @@
 (library (turquoise win32)
     (export)
     (import (rnrs)
+	    (rnrs mutable-pairs)
 	    (clos user)
 	    (sagittarius)
 	    (sagittarius ffi)
@@ -105,8 +106,12 @@
       ((empty)     HOLLOW_BRUSH)
       (else WHITE_BRUSH)))
 
-  (define (add-specific! context name class-name)
-    (push! (~ context 'platform-data) (cons name class-name)))
+  (define (add-specific! context name value)
+    (push! (~ context 'platform-data) (cons name value)))
+  (define (update-specific! context name new-value)
+    (or (and-let* ((s (assq  name (~ context 'platform-data))))
+	  (set-cdr! s new-value))
+	(add-specific! context name new-value)))
   (define (lookup-specific! context name)
     (and-let* ((s (assq  name (~ context 'platform-data))))
       (cdr s)))
@@ -119,10 +124,13 @@
       (syntax-case x ()
 	((k name)
 	 (with-syntax ((append (datum->syntax #'k (genname "add" #'name #t)))
+		       (update (datum->syntax #'k (genname "update" #'name #t)))
 		       (lookup (datum->syntax #'k (genname "lookup" #'name))))
 	   #'(begin
 	       (define (append ctx value)
 		 (add-specific! ctx 'name value))
+	       (define (update ctx value)
+		 (update-specific! ctx 'name value))
 	       (define (lookup ctx)
 		 (lookup-specific! ctx 'name))))))))
 
@@ -235,7 +243,7 @@
 		      ((= ret BST_UNCHECKED) #f)
 		      ((= ret BST_INDETERMINATE) '())))))))
 
-  (define (%show comp show-child?)
+  (define-method show ((comp <component>))
     (let1 context (~ comp 'context)
       (unless (~ context 'handle)
 	(let* ((owner (~ comp 'owner))
@@ -254,18 +262,14 @@
 	    (set! (~ comp 'actions) 
 		  (cons (control-value-retriever comp)
 			(~ comp 'actions))))))
-      (when show-child?
+      (when (~ context 'visible)
 	(let1 hwnd (~ context 'handle)
 	  (show-window hwnd SW_SHOW)
-	  (update-window hwnd)
-	  (set! (~ context 'visible) #t)))))
-
-  (define-method show ((comp <component>))
-    (%show comp #t))
+	  (update-window hwnd)))))
 
   (define-method show ((container <container>))
     (call-next-method)
-    (for-each (cut %show <> #f) (~ container 'components)))
+    (for-each show (~ container 'components)))
 
   (define-method hide ((comp <component>))
     (let1 hwnd (~ comp 'context 'handle)
@@ -285,7 +289,9 @@
 
   (define-method add! ((container <container>) (comp <component>))
     (set! (~ comp 'owner) container)
-    (set! (~ comp 'context 'id) (generate-id))
+    (let1 context (~ comp 'context)
+      (update-style! context (bitwise-ior WS_CHILD (context-style context)))
+      (unless (~ context 'id) (set! (~ context 'id) (generate-id))))
     (push! (~ container 'components) comp))
 
   (define-method add! ((w <window>) (comp <component>))
@@ -311,7 +317,7 @@
     ;; creates button handle
     (let* ((context (~ comp 'context))
 	   (style (bitwise-ior (context-style context)
-			       WS_CHILD (visible-flag context)
+			       (visible-flag context)
 			       (lookup-button-style (~ context 'style)))))
       (add-class-name! context "BUTTON")
       (add-style! context style)
@@ -355,7 +361,7 @@
   (define-method add! ((container <container>) (text <text>))
     (let* ((context (~ text 'context))
 	   (style (bitwise-ior (context-style context)
-			       WS_CHILD (visible-flag context)
+			       (visible-flag context)
 			       (lookup-edit-style 
 				(~ context 'style)))))
       (add-class-name! context "EDIT")
@@ -372,19 +378,23 @@
 
   (define-method add! ((container <container>) (text <list-box>))
     (let1 context (~ text 'context)
-      (add-class-name! context "LIST")
+      (add-class-name! context "LISTBOX")
       (add-style! context (bitwise-ior WS_VSCROLL ES_AUTOVSCROLL WS_VSCROLL))
       (add-window-style! context WS_EX_STATICEDGE)
       (call-next-method)))
+  (define-method on-initialize ((list <list-box>))
+    (call-next-method))
 
   (define-method add! ((container <container>) (text <label>))
     (let1 context (~ text 'context)
       (add-class-name! context "STATIC")
       (add-window-style! context WS_EX_STATICEDGE)
+      ;;(set! (~ text 'context 'id) 0)
       (call-next-method)))
 
   (define-method on-initialize ((text <label>))
     (set-window-text (~ text 'context 'handle) (~ text 'text))
+    (update-window (~ text 'context 'handle))
     (call-next-method))
 
   ;; misc
