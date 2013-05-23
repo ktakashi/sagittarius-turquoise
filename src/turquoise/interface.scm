@@ -30,7 +30,7 @@
 
 (library (turquoise interface)
     (export show hide add! button-style text-style
-	    visible?
+	    visible? on-initialize
 	    ;; hooks
 	    window-close)
     (import (rnrs)

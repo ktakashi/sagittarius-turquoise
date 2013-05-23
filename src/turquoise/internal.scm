@@ -33,7 +33,7 @@
 (library (turquoise internal)
     (export <component-ctx> <window-ctx>
 	    make-window show hide message-loop
-	    add! window-close
+	    add! window-close on-initialize
 	    *current-root-window*)
     (import (rnrs) (clos user) (sagittarius mop validator)
 	    (srfi :39 parameters))
@@ -74,4 +74,6 @@
   (define-generic add!)
 
   (define-generic window-close)
+  (define-generic on-initialize)
+  (define-method on-initialize (c) #t)
 )

@@ -87,10 +87,12 @@
     (set! (~ tc 'checked) (get-keyword :checked initargs '())))
 
   (define-class <combo-box> (<component>) ())
-  (define-class <text>      (<component>) ((value :init-value "")))
+  (define-class <text>      (<component>) 
+    ((value :init-keyword :value :init-value "")))
   (define-class <list-box>  (<component>) ())
   (define-class <scroll>    (<component>) ())
-  (define-class <label>     (<component>) ())
+  (define-class <label>     (<component>) 
+    ((text  :init-keyword :text :init-value "")))
   (define-class <text-area> (<text>) ())
 
   (define-class <action> ()

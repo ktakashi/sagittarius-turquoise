@@ -55,7 +55,7 @@
     (create-window-ex (lookup-window-style context)
 		      (lookup-class-name context)
 		      (~ context 'name)
-		      (lookup-style context)
+		      (context-style context)
 		      (~ context 'x-point)
 		      (~ context 'y-point)
 		      (~ context 'width)
@@ -247,6 +247,7 @@
 			  null-pointer)
 		      (if id (integer->pointer id) null-pointer))))
 	  (set! (~ context 'handle) hwnd)
+	  (on-initialize comp)
 	  ;; bit awkward solution
 	  (when (is-a? comp <performable>)
 	    ;; put the value retriever the first
@@ -284,6 +285,7 @@
 
   (define-method add! ((container <container>) (comp <component>))
     (set! (~ comp 'owner) container)
+    (set! (~ comp 'context 'id) (generate-id))
     (push! (~ container 'components) comp))
 
   (define-method add! ((w <window>) (comp <component>))
@@ -314,7 +316,6 @@
       (add-class-name! context "BUTTON")
       (add-style! context style)
       (add-window-style! context WS_EX_STATICEDGE)
-      (set! (~ context 'id) (generate-id))
       (call-next-method)))
 
   (define-method add! ((container <container>) (comp <radio>))
@@ -360,21 +361,31 @@
       (add-class-name! context "EDIT")
       (add-style! context style)
       (add-window-style! context WS_EX_STATICEDGE)
-      (set! (~ context 'id) (generate-id))
       (call-next-method)))
 
   (define-method add! ((container <container>) (text <text-area>))
     (let1 context (~ text 'context)
-      #|
-      (push! (~ context 'style) 'want-return)
-      (push! (~ context 'style) 'multiline)
-      (push! (~ context 'style) 'horizontal-scroll)
-      (push! (~ context 'style) 'virtical-scroll)
-      |#
       (add-style! context (bitwise-ior ES_WANTRETURN ES_MULTILINE
 				       ES_AUTOHSCROLL ES_AUTOVSCROLL
 				       WS_VSCROLL WS_HSCROLL))
       (call-next-method)))
+
+  (define-method add! ((container <container>) (text <list-box>))
+    (let1 context (~ text 'context)
+      (add-class-name! context "LIST")
+      (add-style! context (bitwise-ior WS_VSCROLL ES_AUTOVSCROLL WS_VSCROLL))
+      (add-window-style! context WS_EX_STATICEDGE)
+      (call-next-method)))
+
+  (define-method add! ((container <container>) (text <label>))
+    (let1 context (~ text 'context)
+      (add-class-name! context "STATIC")
+      (add-window-style! context WS_EX_STATICEDGE)
+      (call-next-method)))
+
+  (define-method on-initialize ((text <label>))
+    (set-window-text (~ text 'context 'handle) (~ text 'text))
+    (call-next-method))
 
   ;; misc
   (define-method initialize ((ctx <window-ctx>) initargs)
