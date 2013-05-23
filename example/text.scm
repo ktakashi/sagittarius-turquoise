@@ -1,0 +1,10 @@
+(import (clos user) (turquoise)
+	(sagittarius object))
+
+(let ((window (make <frame>  :name "One Button Window"))
+      (text   (make <text>   :value "Initial text" :width 100))
+      (button (make <button> :name "Get value" :x-point 100)))
+  (add! window button)
+  (add! window text)
+  (add! button (lambda (button action) (print (~ text 'value))))
+  (window))
