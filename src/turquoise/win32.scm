@@ -204,13 +204,8 @@
 				     (visible-flag context))
 	      (add-style! context style)))
 	w)))
-  (define (default-retriver comp action))
-  (define-method control-value-retriever ((comp <component>)) default-retriver)
-  (define-method control-value-retriever ((comp <text>))
-    ;; set default text here
-    (let1 hwnd (~ comp 'context 'handle)
-      (send-message hwnd WM_SETTEXT 0 (~ comp 'value))
-      (update-window hwnd))
+
+  (define-method sync-component ((comp <text>))
     (lambda (component action)
       (when (eq? (~ action 'operation) 'update)
 	;; whatever action will update the value
@@ -222,16 +217,7 @@
 	  ;; UTF8?
 	  (set! (~ comp 'value) (utf8->string buf))))))
 
-  (define-method control-value-retriever ((comp <check-box>))
-    ;; set default text here
-    (let1 hwnd (~ comp 'context 'handle)
-      (send-message hwnd BM_SETCHECK
-		    (let1 v (~ comp 'checked)
-		      (if (boolean? v)
-			  (if v BST_CHECKED BST_UNCHECKED)
-			  BST_INDETERMINATE))
-		    null-pointer)
-      (update-window hwnd))
+  (define-method sync-component ((comp <check-box>))
     (lambda (component action)
       (when (eq? (~ action 'operation) 'click)
 	;; whatever action will update the value
@@ -242,6 +228,10 @@
 		(cond ((= ret BST_CHECKED) #t)
 		      ((= ret BST_UNCHECKED) #f)
 		      ((= ret BST_INDETERMINATE) '())))))))
+  ;; updator
+  (define-method update-component ((comp <component>))
+    (when (slot-bound? comp 'context)
+      (on-initialize comp)))
 
   (define-method show ((comp <component>))
     (let1 context (~ comp 'context)
@@ -260,8 +250,7 @@
 	  (when (is-a? comp <performable>)
 	    ;; put the value retriever the first
 	    (set! (~ comp 'actions) 
-		  (cons (control-value-retriever comp)
-			(~ comp 'actions))))))
+		  (cons (sync-component comp) (~ comp 'actions))))))
       (when (~ context 'visible)
 	(let1 hwnd (~ context 'handle)
 	  (show-window hwnd SW_SHOW)
@@ -337,6 +326,17 @@
 	  (set! (~ context 'style) 'check)))
     (call-next-method))
 
+  (define-method on-initialize ((comp <check-box>))
+    ;; set default text here
+    (let1 hwnd (~ comp 'context 'handle)
+      (send-message hwnd BM_SETCHECK
+		    (let1 v (~ comp 'checked)
+		      (if (boolean? v)
+			  (if v BST_CHECKED BST_UNCHECKED)
+			  BST_INDETERMINATE))
+		    null-pointer)
+      (update-window hwnd)))
+
   (define-method add! ((p <performable>) (proc <procedure>))
     (push! (~ p 'actions) proc))
 
@@ -368,6 +368,12 @@
       (add-style! context style)
       (add-window-style! context WS_EX_STATICEDGE)
       (call-next-method)))
+
+  (define-method on-initialize ((comp <text>))
+    ;; set default text here
+    (let1 hwnd (~ comp 'context 'handle)
+      (send-message hwnd WM_SETTEXT 0 (~ comp 'value))
+      (update-window hwnd)))
 
   (define-method add! ((container <container>) (text <text-area>))
     (let1 context (~ text 'context)

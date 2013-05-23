@@ -33,9 +33,14 @@
 (library (turquoise internal)
     (export <component-ctx> <window-ctx>
 	    make-window show hide message-loop
-	    add! window-close on-initialize
+	    add!
+	    ;; hooks
+	    window-close on-initialize sync-component
 	    *current-root-window*)
-    (import (rnrs) (clos user) (sagittarius mop validator)
+    (import (rnrs)
+	    (clos user)
+	    (sagittarius mop validator)
+	    (turquoise components)
 	    (srfi :39 parameters))
 
   (define *current-root-window* (make-parameter #f))
@@ -73,7 +78,10 @@
 
   (define-generic add!)
 
+  ;; hooks
   (define-generic window-close)
   (define-generic on-initialize)
   (define-method on-initialize (c) #t)
+  (define-generic sync-component)
+  (define-method sync-component ((c <performable>)) (lambda (c a) #t))
 )

@@ -43,14 +43,28 @@
      <menu-bar-container> <content-panel-container> <performable>
      ;; action
      <action>
+
+     ;; component synchroniser
+     update-component
      )
-    (import (rnrs) (clos user) (sagittarius) (sagittarius object))
+    (import (rnrs) 
+	    (clos user)
+	    (sagittarius)
+	    (sagittarius object)
+	    (sagittarius mop validator))
 
   ;; TODO what should component have?
   (define-class <component> () 
     ((context)
      ;; owner component, #f means root component
      (owner   :init-keyword :owner :init-value #f)))
+
+  (define-generic update-component)
+  ;; default do nothing
+  (define-method update-component (c) #t)
+  (define (component-observer component value)
+    ;; component has value already
+    (update-component component))
 
   (define-class <container> (<component>)
     ;; container can contain component
@@ -79,20 +93,21 @@
 
   (define-class <button> (<component> <performable>) ())
   (define-class <radio> (<button>) ())
-  (define-class <check-box> (<button>) 
-    ((checked :init-keyword :checked :init-value #f)))
+  (define-class <check-box> (<button> <validator-mixin>) 
+    ((checked :init-keyword :checked :init-value #f
+	      :observer component-observer)))
   (define-class <tri-state-check-box> (<check-box>) ())
   (define-method initialize ((tc <tri-state-check-box>) initargs)
     (call-next-method)
     (set! (~ tc 'checked) (get-keyword :checked initargs '())))
 
-  (define-class <combo-box> (<component>) ())
-  (define-class <text>      (<component>) 
-    ((value :init-keyword :value :init-value "")))
-  (define-class <list-box>  (<component>) ())
+  (define-class <combo-box> (<component> <performable>) ())
+  (define-class <text>      (<component> <performable> <validator-mixin>)
+    ((value :init-keyword :value :init-value "" :observer component-observer)))
+  (define-class <list-box>  (<component> <performable>) ())
   (define-class <scroll>    (<component>) ())
-  (define-class <label>     (<component>) 
-    ((text  :init-keyword :text :init-value "")))
+  (define-class <label>     (<component> <validator-mixin>) 
+    ((text  :init-keyword :text :init-value "" :observer component-observer)))
   (define-class <text-area> (<text>) ())
 
   (define-class <action> ()
