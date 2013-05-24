@@ -210,12 +210,17 @@
 			       :operation (lookup-operation op))))
 		(when (and wd (is-a? wd <performable>))
 		  (for-each (^p (p wd action)) (~ wd 'actions)))))
-	     ((= imsg WM_CTLCOLORSTATIC)
+	     ((or (= imsg WM_CTLCOLORSTATIC)
+		  (= imsg WM_CTLCOLOREDIT))
 	      (or (and-let* ((control (lookup-control 
 				       (get-window hwnd)
 				       (pointer->integer (get-window-long-ptr
-							  lparam GWLP_ID)))))
-		    (set-bk-mode (integer->pointer wparam) TRANSPARENT)
+							  lparam GWLP_ID))))
+			     (hdc (integer->pointer wparam))
+			     (c (~ control 'color)))
+		    (set-text-color hdc 
+				    (rgb (~ c 'red) (~ c 'green) (~ c 'blue)))
+		    (set-bk-mode hdc TRANSPARENT)
 		    (pointer->integer
 		     (get-stock-object
 		       (lookup-color (~ control 'context 'background)))))

@@ -43,7 +43,8 @@
      <menu-bar-container> <content-panel-container> <performable>
      ;; action
      <action>
-
+     ;; misc
+     <text-color>
      ;; component synchroniser
      update-component
      )
@@ -108,8 +109,21 @@
     ((value :init-keyword :value :init-value "" :observer component-observer)))
   (define-class <list-box>  (<component> <performable>) ())
   (define-class <scroll>    (<component>) ())
+
+  (define-class <text-color> ()
+    ;; TODO should we add validator to check range?
+    ((red   :init-keyword :red :init-value   0)
+     (green :init-keyword :green :init-value 0)
+     (blue  :init-keyword :blue :init-value  0)))
+
   (define-class <label>     (<component> <validator-mixin>) 
-    ((text  :init-keyword :text :init-value "" :observer component-observer)))
+    ((text  :init-keyword :text :init-value "" :observer component-observer)
+     (color :init-keyword :color :init-form (make <text-color>)
+	    :validator (lambda (o v) 
+			 (unless (is-a? v <text-color>)
+			   (assertion-violation 'label-color
+						"text-color object required"))
+			 v))))
   (define-class <text-area> (<text>) ())
 
   (define-class <action> ()
