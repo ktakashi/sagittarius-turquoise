@@ -52,20 +52,34 @@
 
   (define generate-id (let ((id 0)) (lambda () (set! id (+ id 1)) id)))
 
-  (define (%create-window context owner id)
-    (create-window-ex (lookup-window-style context)
-		      (lookup-class-name context)
-		      (~ context 'name)
-		      (context-style context)
-		      (~ context 'x-point)
-		      (~ context 'y-point)
-		      (~ context 'width)
-		      (~ context 'height)
-		      owner
-		      id
-		      hinstance
-		      null-pointer))
-  ;; FIXME implement this!
+  (define-method slot-unbound 
+    ((c <class>) (o <component-ctx>) (s (eql 'x-point)))
+    CW_USEDEFAULT)
+  (define-method slot-unbound 
+    ((c <class>) (o <component-ctx>) (s (eql 'y-point)))
+    CW_USEDEFAULT)
+  (define-method slot-unbound 
+    ((c <class>) (o <component-ctx>) (s (eql 'width)))
+    CW_USEDEFAULT)
+  (define-method slot-unbound 
+    ((c <class>) (o <component-ctx>) (s (eql 'height)))
+    CW_USEDEFAULT)
+
+  (define (%create-window comp owner id)
+    (let1 context (~ comp 'context)
+      (create-window-ex (or (lookup-window-style context) 0)
+			(lookup-class-name context)
+			(~ context 'name)
+			(context-style context)
+			(~ context 'x-point)
+			(~ context 'y-point)
+			(~ context 'width)
+			(~ context 'height)
+			owner
+			id
+			hinstance
+			(object->pointer comp))))
+
   (define (lookup-operation op)
     (define-macro (case/unquote obj . clauses)
       (let1 tmp (gensym)
@@ -148,90 +162,133 @@
     0)
   
   (define-syntax ash (identifier-syntax bitwise-arithmetic-shift))
-  (define-method make-window ((w <window>))
-    (define win-proc
-      (c-callback void* (HWND unsigned-int WPARAM LPARAM)
-		  (lambda (hwnd imsg wparam lparam)
-		    ;; TODO make handle
-		    (cond ((= imsg WM_CLOSE) (window-close w))
-			  ((= imsg WM_DESTROY)
-			   (cond ((and (not (~ w 'owner))
-				       (eq? w (*current-root-window*)))
-				  (post-quit-message 0) 0)
-				 (else 1)))
-			  ((= imsg WM_COMMAND) ; button or so?
-			   ;; get loword (lower 16 bits)
-			   (let* ((id (bitwise-and wparam #xFFFF))
-				  (op (bitwise-and (ash wparam -16) #xFFFF))
-				  (wd (~ w 'context 'control-map id))
-				  ;; todo make action
-				  (action (make <action>
-					    :control wd
-					    :operation (lookup-operation op))))
-			     (when (and wd (is-a? wd <performable>))
-			       (for-each (^p (p wd action)) (~ wd 'actions))))
-			   )
-			  (else
-			   (def-window-proc hwnd imsg wparam lparam))))))
 
-    (let ((wnd (allocate-c-struct WNDCLASSEX))
-	  (context (~ w 'context))
-	  ;; TODO should we support user defined class name?
-	  (class-name (format "~a" (gensym "window-class"))))
-      (add-class-name! context class-name)
+  (define window-proc
+    (c-callback 
+     void* (HWND unsigned-int WPARAM LPARAM)
+     (lambda (hwnd imsg wparam lparam)
+       (define (get-window hwnd)
+	 (let1 p (get-window-long-ptr hwnd GWLP_USERDATA)
+	   (if (null-pointer? p)
+	       #f
+	       (pointer->object p))))
+       (define (lookup-control w id)
+	 (let loop ((components (~ w 'components)))
+	   (cond ((null? components) #f)
+		 ((= (~ (car components) 'context 'id) id) (car components))
+		 (else (loop (cdr components))))))
+       (cond ((= imsg WM_CREATE)
+	      ;; save the lpCreateParams of CREATESTRUCT
+	      (set-window-long-ptr 
+	       hwnd GWLP_USERDATA 
+	       (c-struct-ref lparam CREATESTRUCT 'lpCreateParams)))
+	     ((= imsg WM_ERASEBKGND)
+	      (let* ((rect (allocate-c-struct RECT))
+		     (hdc (get-dc hwnd))
+		     (context (~ (get-window hwnd) 'context))
+		     (hbrush 
+		      (get-stock-object
+		       (lookup-color (~ context 'background)))))
+		(get-update-rect hwnd rect #f)
+		(fill-rect hdc rect hbrush)
+		1))
+	     ((= imsg WM_CLOSE) (window-close (get-window hwnd)))
+	     ((= imsg WM_DESTROY)
+	      (let1 w (get-window hwnd)
+		(cond ((and (not (~ w 'owner))
+			    (eq? w (*current-root-window*)))
+		       (post-quit-message 0) 0)
+		      (else 1))))
+	     ((= imsg WM_COMMAND) ; button or so?
+	      ;; get loword (lower 16 bits)
+	      (let* ((id (bitwise-and wparam #xFFFF))
+		     (op (bitwise-and (ash wparam -16) #xFFFF))
+		     (wd (~ (get-window hwnd) 'context 'control-map id))
+		     ;; todo make action
+		     (action (make <action>
+			       :control wd
+			       :operation (lookup-operation op))))
+		(when (and wd (is-a? wd <performable>))
+		  (for-each (^p (p wd action)) (~ wd 'actions)))))
+	     ((= imsg WM_CTLCOLORSTATIC)
+	      (or (and-let* ((control (lookup-control 
+				       (get-window hwnd)
+				       (pointer->integer (get-window-long-ptr
+							  lparam GWLP_ID)))))
+		    (set-bk-mode (integer->pointer wparam) TRANSPARENT)
+		    (pointer->integer
+		     (get-stock-object
+		       (lookup-color (~ control 'context 'background)))))
+		  (def-window-proc hwnd imsg wparam lparam)))
+	     ((= imsg WM_CTLCOLORBTN)
+	      ;;(def-window-proc hwnd imsg wparam lparam)
+	      (pointer->integer (get-stock-object BLACK_BRUSH))
+	      )
+	     (else
+	      (def-window-proc hwnd imsg wparam lparam))))))
+  ;; register window-class
+  (define *window-class-name* "turquoise-window")
+  (let ((wnd (allocate-c-struct WNDCLASSEX)))
+    (let-syntax ((wnd-set! (syntax-rules ()
+			     ((_ p v) (c-struct-set! wnd WNDCLASSEX 'p v)))))
+      (wnd-set! cbSize (size-of-c-struct WNDCLASSEX))
+      (wnd-set! lpfnWndProc window-proc)
+      (wnd-set! style (bitwise-ior CS_HREDRAW CS_VREDRAW))
+      (wnd-set! hInstance hinstance)
+      (wnd-set! hIcon (load-icon null-pointer IDI_APPLICATION))
+      (wnd-set! hCursor (load-cursor null-pointer IDC_ARROW))
+      (wnd-set! hbrBackground (get-stock-object WHITE_BRUSH))
+      (wnd-set! lpszClassName *window-class-name*)
+      (wnd-set! hIconSm null-pointer)
+      (when (zero? (register-class-ex wnd))
+	(error 'make-window "Failed to register WNDCLASS"))))
+
+  (define-method make-window ((w <window>))
+    (let1 context (~ w 'context)
+      (add-class-name! context *window-class-name*)
       ;; TODO probably we need a slot for this in context so that
       ;; user can select the window style
       ;;(add-window-style! context WS_EX_PALETTEWINDOW)
       (add-window-style! context WS_EX_APPWINDOW)
-      (let-syntax ((wnd-set! (syntax-rules ()
-			       ((_ p v) (c-struct-set! wnd WNDCLASSEX 'p v)))))
-	(wnd-set! cbSize (size-of-c-struct WNDCLASSEX))
-	(wnd-set! lpfnWndProc win-proc)
-	;; TODO style
-	(wnd-set! style (bitwise-ior CS_HREDRAW CS_VREDRAW))
-	;; TODO check parent
-	(wnd-set! hInstance hinstance)
-	;; TODO get icon from context
-	(wnd-set! hIcon (load-icon null-pointer IDI_APPLICATION))
-	(wnd-set! hCursor (load-cursor null-pointer IDC_ARROW))
-	(wnd-set! hbrBackground 
-		  (get-stock-object (lookup-color (~ context 'background))))
-	(wnd-set! lpszClassName class-name)
-	(wnd-set! hIconSm null-pointer)
-	(if (zero? (register-class-ex wnd))
-	    (error 'make-window "Failed to register WNDCLASS")
-	    (let1 style (bitwise-ior WS_OVERLAPPEDWINDOW
-				     (visible-flag context))
-	      (add-style! context style)))
-	w)))
+      (let1 style (bitwise-ior WS_OVERLAPPEDWINDOW WS_CLIPCHILDREN
+			       (visible-flag context))
+	(add-style! context style))
+      w))
 
   (define-method sync-component ((comp <text>))
     (lambda (component action)
       (when (eq? (~ action 'operation) 'update)
 	;; whatever action will update the value
-	(let* ((hwnd (~ comp 'context 'handle))
-	       (len  (pointer->integer
-		      (send-message hwnd WM_GETTEXTLENGTH 0 null-pointer)))
-	       (buf  (make-bytevector len)))
-	  (send-message hwnd WM_GETTEXT (+ len 1) buf)
-	  ;; UTF8?
-	  (set! (~ comp 'value) (utf8->string buf))))))
+	(with-busy-component comp
+	  (let* ((hwnd (~ comp 'context 'handle))
+		 (len  (pointer->integer
+			(send-message hwnd WM_GETTEXTLENGTH 0 null-pointer)))
+		 (buf  (make-bytevector len)))
+	    (send-message hwnd WM_GETTEXT (+ len 1) buf)
+	    ;; UTF8?
+	    (set! (~ comp 'value) (utf8->string buf)))))))
 
   (define-method sync-component ((comp <check-box>))
     (lambda (component action)
       (when (eq? (~ action 'operation) 'click)
 	;; whatever action will update the value
-	(let* ((hwnd (~ comp 'context 'handle))
-	       (ret  (pointer->integer
-		      (send-message hwnd BM_GETCHECK 0 null-pointer))))
-	  (set! (~ comp 'checked)
-		(cond ((= ret BST_CHECKED) #t)
-		      ((= ret BST_UNCHECKED) #f)
-		      ((= ret BST_INDETERMINATE) '())))))))
-  ;; updator
-  (define-method update-component ((comp <component>))
-    (when (slot-bound? comp 'context)
-      (on-initialize comp)))
+	(with-busy-component comp
+	  (let* ((hwnd (~ comp 'context 'handle))
+		 (ret  (pointer->integer
+			(send-message hwnd BM_GETCHECK 0 null-pointer))))
+	    (set! (~ comp 'checked)
+		  (cond ((= ret BST_CHECKED) #t)
+			((= ret BST_UNCHECKED) #f)
+			((= ret BST_INDETERMINATE) '()))))))))
+  ;; initialise
+  (define-method on-initialize ((comp <component>))
+    (update-component comp))
+  ;; updater around
+  (define-method update-component :around ((comp <component>))
+    (when (and (slot-bound? comp 'context) 
+	       (~ comp 'context 'handle)
+	       (not (~ comp 'busy)))
+      (call-next-method)))
 
   (define-method show ((comp <component>))
     (let1 context (~ comp 'context)
@@ -239,7 +296,7 @@
 	(let* ((owner (~ comp 'owner))
 	       (id    (~ context 'id))
 	       (hwnd (%create-window
-		      context 
+		      comp 
 		      (if owner 
 			  (~ owner 'context 'handle)
 			  null-pointer)
@@ -302,7 +359,7 @@
   (define (context-style context)
     (or (lookup-style context) 0))
 
-  (define-method add! ((container <container>) (comp <button>))
+  (define-method initialize ((comp <button>) initargs)
     ;; creates button handle
     (let* ((context (~ comp 'context))
 	   (style (bitwise-ior (context-style context)
@@ -313,12 +370,12 @@
       (add-window-style! context WS_EX_STATICEDGE)
       (call-next-method)))
 
-  (define-method add! ((container <container>) (comp <radio>))
+  (define-method initialize ((comp <radio>) initargs)
     (let1 context (~ comp 'context)
       (set! (~ context 'style) 'radio))
     (call-next-method))
 
-  (define-method add! ((container <container>) (comp <check-box>))
+  (define-method initialize ((comp <check-box>) initargs)
     (let1 context (~ comp 'context)
       ;; FIXME shouldn't be like this ...
       (if (is-a? comp <tri-state-check-box>)
@@ -326,7 +383,7 @@
 	  (set! (~ context 'style) 'check)))
     (call-next-method))
 
-  (define-method on-initialize ((comp <check-box>))
+  (define-method update-component ((comp <check-box>))
     ;; set default text here
     (let1 hwnd (~ comp 'context 'handle)
       (send-message hwnd BM_SETCHECK
@@ -358,7 +415,7 @@
 				 ((number)    ES_NUMBER)
 				 (else 0))) styles)))
 
-  (define-method add! ((container <container>) (text <text>))
+  (define-method initialize ((text <text>) initargs)
     (let* ((context (~ text 'context))
 	   (style (bitwise-ior (context-style context)
 			       (visible-flag context)
@@ -369,47 +426,36 @@
       (add-window-style! context WS_EX_STATICEDGE)
       (call-next-method)))
 
-  (define-method on-initialize ((comp <text>))
+  (define-method update-component ((comp <text>))
     ;; set default text here
     (let1 hwnd (~ comp 'context 'handle)
       (send-message hwnd WM_SETTEXT 0 (~ comp 'value))
       (update-window hwnd)))
 
-  (define-method add! ((container <container>) (text <text-area>))
+  (define-method initialize ((text <text-area>) initargs)
     (let1 context (~ text 'context)
       (add-style! context (bitwise-ior ES_WANTRETURN ES_MULTILINE
 				       ES_AUTOHSCROLL ES_AUTOVSCROLL
 				       WS_VSCROLL WS_HSCROLL))
       (call-next-method)))
 
-  (define-method add! ((container <container>) (text <list-box>))
+  (define-method initialize ((text <list-box>) initargs)
     (let1 context (~ text 'context)
       (add-class-name! context "LISTBOX")
       (add-style! context (bitwise-ior WS_VSCROLL ES_AUTOVSCROLL WS_VSCROLL))
       (add-window-style! context WS_EX_STATICEDGE)
       (call-next-method)))
-  (define-method on-initialize ((list <list-box>))
-    (call-next-method))
+  (define-method update-component ((list <list-box>)) (call-next-method))
 
-  (define-method add! ((container <container>) (text <label>))
+  (define-method initialize ((text <label>) initargs)
     (let1 context (~ text 'context)
       (add-class-name! context "STATIC")
       (add-window-style! context WS_EX_STATICEDGE)
       ;;(set! (~ text 'context 'id) 0)
       (call-next-method)))
 
-  (define-method on-initialize ((text <label>))
+  (define-method update-component ((text <label>))
     (set-window-text (~ text 'context 'handle) (~ text 'text))
     (update-window (~ text 'context 'handle))
     (call-next-method))
-
-  ;; misc
-  (define-method initialize ((ctx <window-ctx>) initargs)
-    (call-next-method)
-    (set! (~ ctx 'x-point) (get-keyword :x-point initargs CW_USEDEFAULT))
-    (set! (~ ctx 'y-point) (get-keyword :y-point initargs CW_USEDEFAULT))
-    (set! (~ ctx 'width)   (get-keyword :width initargs CW_USEDEFAULT))
-    (set! (~ ctx 'height)  (get-keyword :height initargs CW_USEDEFAULT))
-    )
-
 )

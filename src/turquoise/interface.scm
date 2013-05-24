@@ -37,25 +37,31 @@
 	    (clos user)
 	    (turquoise components)
 	    (turquoise internal)
+	    (sagittarius)
 	    (sagittarius control)
 	    (sagittarius object)
 	    (srfi :39 parameters))
 
   ;; TODO how much should i initialise with the method?
-  (define-method initialize ((w <window>) initargs)
+  (define-method initialize :before ((w <window>) initargs)
     (let1 ctx (apply make <window-ctx> initargs)
       (set! (~ w 'context) ctx)
-      (call-next-method)
-      (make-window w)))
+      w))
+
+  (define-method initialize ((w <window>) initargs)
+    (call-next-method)
+    (make-window w))
 
   ;; For some limitation we create components like button
   ;; later
-  (define-method initialize ((component <component>) initargs)
-    (call-next-method)
+  (define-method initialize :before ((component <component>) initargs)
     (unless (slot-bound? component 'context)
       (let1 ctx (apply make <component-ctx> initargs)
 	(set! (~ component 'context) ctx)
 	component)))
+  
+  (define-method initialize ((component <component>) initargs)
+    (call-next-method))
 
   (define-method object-apply ((window <window>))
     (parameterize ((*current-root-window* window))

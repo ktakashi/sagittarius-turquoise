@@ -36,12 +36,24 @@
 	    add!
 	    ;; hooks
 	    window-close on-initialize sync-component
-	    *current-root-window*)
+	    *current-root-window*
+	    with-busy-component)
     (import (rnrs)
 	    (clos user)
+	    (sagittarius control)
+	    (sagittarius object)
 	    (sagittarius mop validator)
 	    (turquoise components)
 	    (srfi :39 parameters))
+
+  (define-syntax with-busy-component
+    (syntax-rules ()
+      ((_ c body ...)
+       (unless (~ c 'busy)
+	 (set! (~ c 'busy) #t)
+	 (unwind-protect
+	     (begin body ...)
+	   (set! (~ c 'busy) #f))))))
 
   (define *current-root-window* (make-parameter #f))
 
@@ -49,13 +61,14 @@
     ;; platform specific window object.
     ((handle        :init-value #f)
      (id            :init-value #f)
-     (x-point       :init-keyword :x-point :init-value 0)
-     (y-point       :init-keyword :y-point :init-value 0)
+     (x-point       :init-keyword :x-point)
+     (y-point       :init-keyword :y-point)
      ;; how much?
-     (width         :init-keyword :width   :init-value 100)
-     (height        :init-keyword :height  :init-value 20)
+     (width         :init-keyword :width)
+     (height        :init-keyword :height)
      (style         :init-keyword :style   :init-value '())
      (visible       :init-keyword :visible :init-value #t)
+     (background    :init-keyword :background :init-value 'white)
      ;; data store for platform specific values
      (platform-data :init-value ())
      (name  :init-keyword :name :init-value "No title"
@@ -66,8 +79,7 @@
 			 v))))
   ;; internal window context
   (define-class <window-ctx> (<component-ctx>) 
-    ((background :init-keyword :background :init-value 'white)
-     (control-map :init-form (make-eqv-hashtable))))
+    ((control-map :init-form (make-eqv-hashtable))))
 
   (define-generic make-window)
   ;; set given window visible

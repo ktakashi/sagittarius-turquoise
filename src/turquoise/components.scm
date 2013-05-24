@@ -57,7 +57,9 @@
   (define-class <component> () 
     ((context)
      ;; owner component, #f means root component
-     (owner   :init-keyword :owner :init-value #f)))
+     (owner   :init-keyword :owner :init-value #f)
+     ;; if this component is busy or not (doing something)
+     (busy    :init-value #f)))
 
   (define-generic update-component)
   ;; default do nothing
