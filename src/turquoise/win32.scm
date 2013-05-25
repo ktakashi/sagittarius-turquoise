@@ -387,6 +387,7 @@
     (call-next-method)
     (let* ((context (~ comp 'context))
 	   (style (bitwise-ior (context-style context)
+			       BS_NOTIFY
 			       (lookup-button-style (~ comp 'style)))))
       (add-class-name! context "BUTTON")
       (add-style! context style)
