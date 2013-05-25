@@ -61,14 +61,6 @@
     ;; platform specific window object.
     ((handle        :init-value #f)
      (id            :init-value #f)
-     (x-point       :init-keyword :x-point)
-     (y-point       :init-keyword :y-point)
-     ;; how much?
-     (width         :init-keyword :width)
-     (height        :init-keyword :height)
-     (style         :init-keyword :style   :init-value '())
-     (visible       :init-keyword :visible :init-value #t)
-     (background    :init-keyword :background :init-value 'white)
      ;; data store for platform specific values
      (platform-data :init-value ())
      (name  :init-keyword :name :init-value "No title"

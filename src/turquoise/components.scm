@@ -59,6 +59,14 @@
     ((context)
      ;; owner component, #f means root component
      (owner   :init-keyword :owner :init-value #f)
+     ;; position and style
+     (x-point       :init-keyword :x-point)
+     (y-point       :init-keyword :y-point)
+     (width         :init-keyword :width)
+     (height        :init-keyword :height)
+     (style         :init-keyword :style   :init-value '())
+     (visible       :init-keyword :visible :init-value #t)
+     (background    :init-keyword :background :init-value 'white)
      ;; if this component is busy or not (doing something)
      (busy    :init-value #f)))
 

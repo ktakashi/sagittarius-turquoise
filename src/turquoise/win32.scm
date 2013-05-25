@@ -52,17 +52,13 @@
 
   (define generate-id (let ((id 0)) (lambda () (set! id (+ id 1)) id)))
 
-  (define-method slot-unbound 
-    ((c <class>) (o <component-ctx>) (s (eql 'x-point)))
+  (define-method slot-unbound ((c <class>) (o <component>) (s (eql 'x-point)))
     CW_USEDEFAULT)
-  (define-method slot-unbound 
-    ((c <class>) (o <component-ctx>) (s (eql 'y-point)))
+  (define-method slot-unbound ((c <class>) (o <component>) (s (eql 'y-point)))
     CW_USEDEFAULT)
-  (define-method slot-unbound 
-    ((c <class>) (o <component-ctx>) (s (eql 'width)))
+  (define-method slot-unbound ((c <class>) (o <component>) (s (eql 'width)))
     CW_USEDEFAULT)
-  (define-method slot-unbound 
-    ((c <class>) (o <component-ctx>) (s (eql 'height)))
+  (define-method slot-unbound ((c <class>) (o <component>) (s (eql 'height)))
     CW_USEDEFAULT)
 
   (define (%create-window comp owner id)
@@ -70,11 +66,12 @@
       (create-window-ex (or (lookup-window-style context) 0)
 			(lookup-class-name context)
 			(~ context 'name)
-			(context-style context)
-			(~ context 'x-point)
-			(~ context 'y-point)
-			(~ context 'width)
-			(~ context 'height)
+			(bitwise-ior (context-style context) 
+				     (visible-flag comp))
+			(~ comp 'x-point)
+			(~ comp 'y-point)
+			(~ comp 'width)
+			(~ comp 'height)
 			owner
 			id
 			hinstance
@@ -152,13 +149,13 @@
   (define-platform-data style)
   (define-platform-data window-style)
 
-  (define (visible-flag context)
-    (if (~ context 'visible) WS_VISIBLE 0))
+  (define (visible-flag comp)
+    (if (~ comp 'visible) WS_VISIBLE 0))
 
   (define-method window-close ((w <window>))
     (destroy-window (~ w 'context 'handle))
     (set! (~ w 'context 'handle) #f)
-    (set! (~ w 'context 'visible) #f)
+    (set! (~ w 'visible) #f)
     0)
   
   (define-syntax ash (identifier-syntax bitwise-arithmetic-shift))
@@ -185,10 +182,9 @@
 	     ((= imsg WM_ERASEBKGND)
 	      (let* ((rect (allocate-c-struct RECT))
 		     (hdc (get-dc hwnd))
-		     (context (~ (get-window hwnd) 'context))
 		     (hbrush 
 		      (get-stock-object
-		       (lookup-color (~ context 'background)))))
+		       (lookup-color (~ (get-window hwnd) 'background)))))
 		(get-update-rect hwnd rect #f)
 		(fill-rect hdc rect hbrush)
 		1))
@@ -255,8 +251,7 @@
       ;; user can select the window style
       ;;(add-window-style! context WS_EX_PALETTEWINDOW)
       (add-window-style! context WS_EX_APPWINDOW)
-      (let1 style (bitwise-ior WS_OVERLAPPEDWINDOW WS_CLIPCHILDREN
-			       (visible-flag context))
+      (let1 style (bitwise-ior WS_OVERLAPPEDWINDOW WS_CLIPCHILDREN)
 	(add-style! context style))
       w))
 
@@ -313,7 +308,7 @@
 	    ;; put the value retriever the first
 	    (set! (~ comp 'actions) 
 		  (cons (sync-component comp) (~ comp 'actions))))))
-      (when (~ context 'visible)
+      (when (~ comp 'visible)
 	(let1 hwnd (~ context 'handle)
 	  (show-window hwnd SW_SHOW)
 	  (update-window hwnd)))))
@@ -327,7 +322,7 @@
       (when hwnd
 	(show-window hwnd SW_HIDE)
 	(update-window hwnd)
-	(set! (~ comp 'context 'visible) #f))))
+	(set! (~ comp 'visible) #f))))
 
   (define-method message-loop ((w <window>))
     (let ((msg (allocate-c-struct MSG)))
@@ -365,27 +360,23 @@
     (or (lookup-style context) 0))
 
   (define-method initialize ((comp <button>) initargs)
-    ;; creates button handle
+    (call-next-method)
     (let* ((context (~ comp 'context))
 	   (style (bitwise-ior (context-style context)
-			       (visible-flag context)
-			       (lookup-button-style (~ context 'style)))))
+			       (lookup-button-style (~ comp 'style)))))
       (add-class-name! context "BUTTON")
       (add-style! context style)
-      (add-window-style! context WS_EX_STATICEDGE)
-      (call-next-method)))
+      (add-window-style! context WS_EX_STATICEDGE)))
 
   (define-method initialize ((comp <radio>) initargs)
-    (let1 context (~ comp 'context)
-      (set! (~ context 'style) 'radio))
+    (set! (~ comp 'style) 'radio)
     (call-next-method))
 
   (define-method initialize ((comp <check-box>) initargs)
-    (let1 context (~ comp 'context)
-      ;; FIXME shouldn't be like this ...
-      (if (is-a? comp <tri-state-check-box>)
-	  (set! (~ context 'style) 'tri-state)
-	  (set! (~ context 'style) 'check)))
+    ;; FIXME shouldn't be like this ...
+    (if (is-a? comp <tri-state-check-box>)
+	(set! (~ comp 'style) 'tri-state)
+	(set! (~ comp 'style) 'check))
     (call-next-method))
 
   (define-method update-component ((comp <check-box>))
@@ -421,15 +412,13 @@
 				 (else 0))) styles)))
 
   (define-method initialize ((text <text>) initargs)
+    (call-next-method)
     (let* ((context (~ text 'context))
 	   (style (bitwise-ior (context-style context)
-			       (visible-flag context)
-			       (lookup-edit-style 
-				(~ context 'style)))))
+			       (lookup-edit-style (~ text 'style)))))
       (add-class-name! context "EDIT")
       (add-style! context style)
-      (add-window-style! context WS_EX_STATICEDGE)
-      (call-next-method)))
+      (add-window-style! context WS_EX_STATICEDGE)))
 
   (define-method update-component ((comp <text>))
     ;; set default text here
