@@ -121,13 +121,17 @@
     ((r :init-keyword :r :init-value 0)
      (g :init-keyword :g :init-value 0)
      (b :init-keyword :b :init-value 0)))
+
+  ;; this class is mixin
   (define-class <rgb-color> (<validator-mixin>)
     ((color :init-keyword :color :init-form (make <rgb>)
 	    :validator (lambda (o v) 
 			 (unless (is-a? v <rgb>)
 			   (assertion-violation 'label-color
 						"rgb object required"))
-			 v))))
+			 v)
+	    ;; derived class must be a component
+	    :observer component-observer)))
 
   (define-class <text>      (<component> <performable> <rgb-color>)
     ((value :init-keyword :value :init-value "" :observer component-observer)))

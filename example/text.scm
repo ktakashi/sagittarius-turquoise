@@ -14,5 +14,7 @@
       (button (make <button> :name "Get value" :x-point 100)))
   (add! window button)
   (add! window text)
-  (add! button (lambda (button action) (print (~ text 'value))))
+  (add! button (lambda (button action) 
+		 (set! (~ text 'color) (make <rgb> :b 255))
+		 (print (~ text 'value))))
   (window))
