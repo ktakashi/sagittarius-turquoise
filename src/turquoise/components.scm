@@ -35,8 +35,10 @@
      ;; widgets (non-container)
      <button> <radio>
      <check-box> <tri-state-check-box>
-     <combo-box> <text>
-     <list-box> <scroll> <label> <text-area>
+     <text> <text-area> <label>
+     <combo-box> <list-box>
+     <item> <list-item>
+     <scroll>
      ;; container widgets
      <window> <frame> <dialog>
      ;; mixins
@@ -112,8 +114,22 @@
     (call-next-method)
     (set! (~ tc 'checked) (get-keyword :checked initargs '())))
 
+  ;; abstract class
+  (define-class <item> () ())
+  (define-class <list-item> ()
+    ;; index is for management
+    ((index)
+     (label :init-keyword :label :init-value "")))
+
   (define-class <combo-box> (<component> <performable>) ())
-  (define-class <list-box>  (<component> <performable>) ())
+  (define-class <list-box>  (<component> <performable>)
+    ((items :init-keyword :items :init-value '())
+     (selected :init-value #f
+	       :validator (lambda (o v)
+			    (unless (memq v (~ o 'items))
+			      (error 'list-box "item is not added" v))
+			    v)
+	       :observer component-observer)))
   (define-class <scroll>    (<component>) ())
 
   (define-class <rgb> ()
@@ -143,4 +159,7 @@
   (define-class <action> ()
     ((control   :init-keyword :control)
      (operation :init-keyword :operation)))
+
+  (define-method write-object ((a <action>) p)
+    (format p "#<action ~a>" (~ a 'operation)))
 )

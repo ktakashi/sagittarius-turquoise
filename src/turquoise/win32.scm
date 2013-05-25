@@ -82,34 +82,43 @@
 			hinstance
 			(object->pointer comp))))
 
-  (define (lookup-operation op)
-    (define-macro (case/unquote obj . clauses)
-      (let1 tmp (gensym)
-	(define (expand-clause clause)
-	  (match clause
-	    (((item) . body)
-	     `((eqv? ,tmp ,item) ,@body))
-	    (((item ___) . body)
-	     (let1 ilist (list 'quasiquote
-			       (map (cut list 'unquote <>) item))
-	       `((memv ,tmp ,ilist) ,@body)))
-	    (((? (lambda (x) (eq? 'else x)) -) . body)
-	     `(else ,@body))))
-	`(let ((,tmp ,obj))
-	   (cond ,@(map expand-clause clauses)))))
+  (define-macro (case/unquote obj . clauses)
+    (let1 tmp (gensym)
+      (define (expand-clause clause)
+	(match clause
+	  (((item) . body)
+	   `((eqv? ,tmp ,item) ,@body))
+	  (((item ___) . body)
+	   (let1 ilist (list 'quasiquote
+			     (map (cut list 'unquote <>) item))
+	     `((memv ,tmp ,ilist) ,@body)))
+	  (((? (lambda (x) (eq? 'else (identifier->symbol x))) -) . body)
+	   `(else ,@body))))
+      `(let ((,tmp ,obj))
+	 (cond ,@(map expand-clause clauses)))))
+  (define-method lookup-operation ((b <button>) op)
     (case/unquote op
-      ((BN_CLICKED)
-       'click)
-      ((BN_DOUBLECLICKED)
-       'double-click)
-      ((BN_SETFOCUS EN_SETFOCUS)
-       'focus)
-      ((BN_KILLFOCUS EN_KILLFOCUS)
-       'blur)
+      ((BN_CLICKED) 'click)
+      ((BN_DOUBLECLICKED) 'double-click)
+      ((BN_SETFOCUS) 'focus)
+      ((BN_KILLFOCUS) 'blur)
+      (else op)))
+  (define-method lookup-operation ((t <text>) op)
+    (case/unquote op
+      ((EN_SETFOCUS) 'focus)
+      ((EN_KILLFOCUS) 'blur)
       ((EN_CHANGE) 'change)
       ((EN_UPDATE) 'update)
       ((EN_HSCROLL) 'horizontal-scroll)
       ((EN_VSCROLL) 'virtical-scroll)
+      (else op)))
+  (define-method lookup-operation ((t <list-box>) op)
+    (case/unquote op
+      ((LBN_SELCHANGE) 'selection-change)
+      ((LBN_DBLCLK)    'double-click)
+      ((LBN_SELCANCEL) 'selection-cancel)
+      ((LBN_SETFOCUS)  'focus)
+      ((LBN_KILLFOCUS) 'blur)
       (else op)))
 
   (define (lookup-color color)
@@ -208,7 +217,7 @@
 		     ;; todo make action
 		     (action (make <action>
 			       :control wd
-			       :operation (lookup-operation op))))
+			       :operation (lookup-operation wd op))))
 		(when (and wd (is-a? wd <performable>))
 		  (for-each (^p (p wd action)) (~ wd 'actions)))))
 	     ((or (= imsg WM_CTLCOLORSTATIC)
@@ -283,6 +292,18 @@
 		  (cond ((= ret BST_CHECKED) #t)
 			((= ret BST_UNCHECKED) #f)
 			((= ret BST_INDETERMINATE) '()))))))))
+
+  (define-method sync-component ((comp <list-box>))
+    (lambda (component action)
+      (when (eq? (~ action 'operation) 'selection-change)
+	;; whatever action will update the value
+	(with-busy-component comp
+	  (let* ((hwnd (~ comp 'context 'handle))
+		 (index (send-message hwnd LB_GETCURSEL 0 null-pointer))
+		 (item  (send-message hwnd LB_GETITEMDATA 
+				      (pointer->integer index) null-pointer)))
+	    (set! (~ component 'selected) (pointer->object item)))))))
+
   ;; initialise
   (define-method on-initialize ((comp <component>))
     (update-component comp))
@@ -439,10 +460,26 @@
   (define-method initialize ((text <list-box>) initargs)
     (let1 context (~ text 'context)
       (add-class-name! context "LISTBOX")
-      (add-style! context (bitwise-ior WS_VSCROLL ES_AUTOVSCROLL WS_VSCROLL))
+      (add-style! context (bitwise-ior LBS_NOTIFY WS_VSCROLL WS_VSCROLL
+				       WS_BORDER))
       (add-window-style! context WS_EX_STATICEDGE)
       (call-next-method)))
-  (define-method update-component ((list <list-box>)) (call-next-method))
+  (define-method update-component ((lst <list-box>))
+    (define (add-item hwnd item)
+      (unless (slot-bound? item 'index)
+	(let1 index (send-message hwnd LB_ADDSTRING 0 (~ item 'label))
+	  (set! (~ item 'index) (pointer->integer index))
+	  (send-message hwnd LB_SETITEMDATA
+			(pointer->integer index) (object->pointer item)))))
+    (let1 hwnd (~ lst 'context 'handle)
+      (for-each (cut add-item hwnd <>) (reverse (~ lst 'items)))
+      (when (~ lst 'selected)
+	(send-message hwnd LB_SETSEL 1 
+		      (integer->pointer (~ lst 'selected 'index)))))
+    (call-next-method))
+
+  (define-method add! ((ls <list-box>) (item <list-item>))
+    (push! (~ ls 'items) item))
 
   (define-method initialize ((text <label>) initargs)
     (let1 context (~ text 'context)
