@@ -44,7 +44,7 @@
      ;; action
      <action>
      ;; misc
-     <text-color>
+     <rgb> <rgb-color>
      ;; component synchroniser
      update-component
      )
@@ -113,26 +113,28 @@
     (set! (~ tc 'checked) (get-keyword :checked initargs '())))
 
   (define-class <combo-box> (<component> <performable>) ())
-  (define-class <text>      (<component> <performable> <validator-mixin>)
-    ((value :init-keyword :value :init-value "" :observer component-observer)))
   (define-class <list-box>  (<component> <performable>) ())
   (define-class <scroll>    (<component>) ())
 
-  (define-class <text-color> ()
+  (define-class <rgb> ()
     ;; TODO should we add validator to check range?
-    ((red   :init-keyword :red :init-value   0)
-     (green :init-keyword :green :init-value 0)
-     (blue  :init-keyword :blue :init-value  0)))
-
-  (define-class <label>     (<component> <validator-mixin>) 
-    ((text  :init-keyword :text :init-value "" :observer component-observer)
-     (color :init-keyword :color :init-form (make <text-color>)
+    ((r :init-keyword :r :init-value 0)
+     (g :init-keyword :g :init-value 0)
+     (b :init-keyword :b :init-value 0)))
+  (define-class <rgb-color> (<validator-mixin>)
+    ((color :init-keyword :color :init-form (make <rgb>)
 	    :validator (lambda (o v) 
-			 (unless (is-a? v <text-color>)
+			 (unless (is-a? v <rgb>)
 			   (assertion-violation 'label-color
-						"text-color object required"))
+						"rgb object required"))
 			 v))))
+
+  (define-class <text>      (<component> <performable> <rgb-color>)
+    ((value :init-keyword :value :init-value "" :observer component-observer)))
   (define-class <text-area> (<text>) ())
+
+  (define-class <label>     (<component> <rgb-color>) 
+    ((text  :init-keyword :text :init-value "" :observer component-observer)))
 
   (define-class <action> ()
     ((control   :init-keyword :control)

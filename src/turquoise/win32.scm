@@ -53,12 +53,17 @@
   (define generate-id (let ((id 0)) (lambda () (set! id (+ id 1)) id)))
 
   (define-method slot-unbound ((c <class>) (o <component>) (s (eql 'x-point)))
-    CW_USEDEFAULT)
+    0)
   (define-method slot-unbound ((c <class>) (o <component>) (s (eql 'y-point)))
-    CW_USEDEFAULT)
+    0)
   (define-method slot-unbound ((c <class>) (o <component>) (s (eql 'width)))
     CW_USEDEFAULT)
   (define-method slot-unbound ((c <class>) (o <component>) (s (eql 'height)))
+    CW_USEDEFAULT)
+
+  (define-method slot-unbound ((c <class>) (o <window>) (s (eql 'x-point)))
+    CW_USEDEFAULT)
+  (define-method slot-unbound ((c <class>) (o <window>) (s (eql 'y-point)))
     CW_USEDEFAULT)
 
   (define (%create-window comp owner id)
@@ -214,16 +219,14 @@
 							  lparam GWLP_ID))))
 			     (hdc (integer->pointer wparam))
 			     (c (~ control 'color)))
-		    (set-text-color hdc 
-				    (rgb (~ c 'red) (~ c 'green) (~ c 'blue)))
+		    (set-text-color hdc (rgb (~ c 'r) (~ c 'g) (~ c 'b)))
 		    (set-bk-mode hdc TRANSPARENT)
 		    (pointer->integer
-		     (get-stock-object
-		       (lookup-color (~ control 'context 'background)))))
+		     (get-stock-object (lookup-color (~ control 'background)))))
 		  (def-window-proc hwnd imsg wparam lparam)))
 	     ((= imsg WM_CTLCOLORBTN)
-	      ;;(def-window-proc hwnd imsg wparam lparam)
-	      (pointer->integer (get-stock-object BLACK_BRUSH))
+	      (def-window-proc hwnd imsg wparam lparam)
+	      ;;(pointer->integer (get-stock-object BLACK_BRUSH))
 	      )
 	     (else
 	      (def-window-proc hwnd imsg wparam lparam))))))
