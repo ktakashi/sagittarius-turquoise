@@ -89,15 +89,15 @@
 	  (style   (~ menu 'style))
 	  (root-menu    (create-menu))
 	  (mii (allocate-c-struct MENUITEMINFO)))
-      (set-menu owner root-menu)
       (c-struct-set! mii MENUITEMINFO 'cbSize (size-of-c-struct MENUITEMINFO))
       (c-struct-set! mii MENUITEMINFO 'fMask 
-		     (bitwise-ior MIIM_TYPE 
+		     (bitwise-ior MIIM_TYPE
 				  (if (null? children) 0 MIIM_SUBMENU)))
       ;; TODO lookup menu type
       (c-struct-set! mii MENUITEMINFO 'fType MFT_STRING)
       (c-struct-set! mii MENUITEMINFO 'dwTypeData (~ context 'name))
       (insert-menu-item root-menu 0 #t mii)
+      (set-menu owner root-menu)
       root-menu))
 
   (define-macro (case/unquote obj . clauses)
