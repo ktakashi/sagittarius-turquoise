@@ -41,6 +41,8 @@
      <scroll>
      ;; container widgets
      <window> <frame> <dialog>
+     ;; menu
+     <menu>
      ;; mixins
      <menu-bar-container> <content-panel-container> <performable>
      ;; action
@@ -91,14 +93,19 @@
     ((root-panel :init-keyword :root-panel)))
 
   (define-class <menu-bar-container> ()
-    ((menu-bar :init-keyword :menu-bar)))
+    ((menu-bar :init-keyword :menu-bar :init-value #f)))
 
   (define-class <frame> 
-    (<window> <content-panel-container> <menu-bar-container>)
+    (<menu-bar-container> <content-panel-container> <window>)
     ())
 
-  (define-class <dialog> (<window> <content-panel-container>)
+  (define-class <dialog> (<content-panel-container> <window>)
     ())
+
+  (define-class <menu> (<component>)
+    ;; TODO what's the standard menu for platform?
+    ((type     :init-keyword :type :init-value 'string)
+     (children :init-value '())))
 
   ;; performable have actions (procedure list)
   (define-class <performable> ()

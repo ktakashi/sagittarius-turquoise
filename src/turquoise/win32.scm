@@ -66,8 +66,9 @@
   (define-method slot-unbound ((c <class>) (o <window>) (s (eql 'y-point)))
     CW_USEDEFAULT)
 
-  (define (%create-window comp owner id)
-    (let1 context (~ comp 'context)
+  (define-method %create-window ((comp <component>) owner)
+    (let* ((context (~ comp 'context))
+	   (id      (~ context 'id)))
       (create-window-ex (or (lookup-window-style context) 0)
 			(lookup-class-name context)
 			(~ context 'name)
@@ -78,9 +79,28 @@
 			(~ comp 'width)
 			(~ comp 'height)
 			owner
-			id
+			(if id (integer->pointer id) null-pointer)
 			hinstance
 			(object->pointer comp))))
+
+  (define-method %create-window ((menu <menu>) owner)
+    (when (null-pointer? owner)
+      (error 'menu-creation "atempt showing orphan menu" menu))
+    (let ((context (~ menu 'context))
+	  (children (~ menu 'children))
+	  (style   (~ menu 'style))
+	  (root-menu    (create-menu))
+	  (mii (allocate-c-struct MENUITEMINFO)))
+      (set-menu owner root-menu)
+      (c-struct-set! mii MENUITEMINFO 'cbSize (size-of-c-struct MENUITEMINFO))
+      (c-struct-set! mii MENUITEMINFO 'fMask 
+		     (bitwise-ior MIIM_TYPE 
+				  (if (null? children) 0 MIIM_SUBMENU)))
+      ;; TODO lookup menu type
+      (c-struct-set! mii MENUITEMINFO 'fType MFT_STRING)
+      (c-struct-set! mii MENUITEMINFO 'dwTypeData (~ context 'name))
+      (insert-menu-item root-menu 0 #t mii)
+      root-menu))
 
   (define-macro (case/unquote obj . clauses)
     (let1 tmp (gensym)
@@ -214,12 +234,12 @@
 	      (let* ((id (bitwise-and wparam #xFFFF))
 		     (op (bitwise-and (ash wparam -16) #xFFFF))
 		     (wd (~ (get-window hwnd) 'context 'control-map id))
-		     ;; todo make action
-		     (action (make <action>
-			       :control wd
-			       :operation (lookup-operation wd op))))
+		     )
 		(when (and wd (is-a? wd <performable>))
-		  (for-each (^p (p wd action)) (~ wd 'actions)))))
+		  (let1 action (make <action>
+				 :control wd
+				 :operation (lookup-operation wd op))
+		    (for-each (^p (p wd action)) (~ wd 'actions))))))
 	     ((or (= imsg WM_CTLCOLORSTATIC)
 		  (= imsg WM_CTLCOLOREDIT))
 	      (or (and-let* ((control (lookup-control 
@@ -318,13 +338,11 @@
     (let1 context (~ comp 'context)
       (unless (~ context 'handle)
 	(let* ((owner (~ comp 'owner))
-	       (id    (~ context 'id))
 	       (hwnd (%create-window
 		      comp 
 		      (if owner 
 			  (~ owner 'context 'handle)
-			  null-pointer)
-		      (if id (integer->pointer id) null-pointer))))
+			  null-pointer))))
 	  (set! (~ context 'handle) hwnd)
 	  (on-initialize comp)
 	  ;; bit awkward solution
@@ -336,6 +354,10 @@
 	(let1 hwnd (~ context 'handle)
 	  (show-window hwnd SW_SHOW)
 	  (update-window hwnd)))))
+
+  (define-method show ((menu-holfer <menu-bar-container>))
+    (call-next-method)
+    (show (~ menu-holfer 'menu-bar)))
 
   (define-method show ((container <container>))
     (call-next-method)
@@ -370,6 +392,11 @@
     (let ((id (~ comp 'context 'id))
 	  (context (~ w 'context)))
       (set! (~ context 'control-map id) comp)))
+
+  (define-method add! ((w <menu-bar-container>) (menu <menu>))
+    (set! (~ menu 'owner) w)
+    (set! (~ w 'menu-bar) menu)
+    (call-next-method))
 
   (define (lookup-button-style style)
     (case style
@@ -493,4 +520,12 @@
     (set-window-text (~ text 'context 'handle) (~ text 'text))
     (update-window (~ text 'context 'handle))
     (call-next-method))
+
+  ;; menu
+  (define-method initialize ((menu <menu>) initargs)
+    (call-next-method))
+  
+  (define-method add! ((menu <menu>) (item <menu>))
+    (push! (~ menu 'children) item))
+
 )
