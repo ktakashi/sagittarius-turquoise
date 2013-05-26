@@ -84,8 +84,6 @@
 			(object->pointer comp))))
 
   (define-method %create-window ((menu <menu>) owner)
-    (when (null-pointer? owner)
-      (error 'menu-creation "atempt showing orphan menu" menu))
     (let ((context (~ menu 'context))
 	  (children (~ menu 'children))
 	  (style   (~ menu 'style))
@@ -210,9 +208,9 @@
 		 (else (loop (cdr components))))))
        (cond ((= imsg WM_CREATE)
 	      ;; save the lpCreateParams of CREATESTRUCT
-	      (set-window-long-ptr 
-	       hwnd GWLP_USERDATA 
-	       (c-struct-ref lparam CREATESTRUCT 'lpCreateParams)))
+	      (let1 w (c-struct-ref lparam CREATESTRUCT 'lpCreateParams)
+		(set-window-long-ptr hwnd GWLP_USERDATA w)
+		1))
 	     ((= imsg WM_ERASEBKGND)
 	      (let* ((rect (allocate-c-struct RECT))
 		     (hdc (get-dc hwnd))
@@ -354,10 +352,11 @@
 	(let1 hwnd (~ context 'handle)
 	  (show-window hwnd SW_SHOW)
 	  (update-window hwnd)))))
-
+  
   (define-method show ((menu-holfer <menu-bar-container>))
     (call-next-method)
-    (show (~ menu-holfer 'menu-bar)))
+    (show (~ menu-holfer 'menu-bar))
+    (update-window (~ menu-holfer 'menu-bar 'context 'handle)))
 
   (define-method show ((container <container>))
     (call-next-method)
@@ -394,9 +393,13 @@
       (set! (~ context 'control-map id) comp)))
 
   (define-method add! ((w <menu-bar-container>) (menu <menu>))
+    (call-next-method)
     (set! (~ menu 'owner) w)
     (set! (~ w 'menu-bar) menu)
-    (call-next-method))
+    ;; remove menu from components ...
+    (let1 components (~ w 'components)
+      (set! (~ w 'components) (remove menu components)))
+    )
 
   (define (lookup-button-style style)
     (case style
