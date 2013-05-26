@@ -77,6 +77,9 @@
      (y-point    :init-keyword :y-point)
      (width      :init-keyword :width)
      (height     :init-keyword :height)
+     ;; bad naming, this actually adjust component size to
+     ;; parent component size!
+     (adjust-size :init-keyword :adjust-size :init-value #f)
      (style      :init-keyword :style   :init-value '())
      (visible    :init-keyword :visible :init-value #t)
      (background :init-keyword :background :init-value 'white)

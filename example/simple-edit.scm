@@ -7,11 +7,11 @@
 
 (let ((frame (make <frame> :name "Simple Edit"))
       ;; TODO resize automatically
-      (text  (make <text-area> :width 500 :height 500))
+      (text  (make <text-area> :adjust-size #t))
       (menu  (make <menu>))
       (file  (make <menu> :name "File"))
-      (open  (make <menu-item> :name "&Open"))
-      (save  (make <menu-item> :name "&Save"))
+      (open  (make <menu-item> :name "Open"))
+      (save  (make <menu-item> :name "Save"))
       (help  (make <menu> :name "Help"))
       (about (make <menu-item> :name "&About"))
       (open-select (make <file-select> :title "Open File" :type 'open))

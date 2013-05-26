@@ -229,6 +229,22 @@
 			    (eq? w (*current-root-window*)))
 		       (post-quit-message 0) 0)
 		      (else 1))))
+	     ((= imsg WM_SIZE)
+	      (let ((rc (allocate-c-struct RECT)))
+		;; make components which have adjust-size #t to the size of
+		;; this component
+		(get-client-rect hwnd rc)
+		(for-each (lambda (component)
+			    (let1 hwnd (~ component 'context 'handle)
+			      (when hwnd
+				(move-window hwnd
+					     (c-struct-ref rc RECT 'left)
+					     (c-struct-ref rc RECT 'top)
+					     (c-struct-ref rc RECT 'right)
+					     (c-struct-ref rc RECT 'bottom)
+					     #t))))
+			  (~ (get-window hwnd) 'components))
+		0))
 	     ((= imsg WM_COMMAND) ; button or so?
 	      ;; get loword (lower 16 bits)
 	      (let* ((id (bitwise-and wparam #xFFFF))
