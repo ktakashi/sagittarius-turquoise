@@ -302,7 +302,8 @@
       ;; user can select the window style
       ;;(add-window-style! context WS_EX_PALETTEWINDOW)
       (add-window-style! context WS_EX_APPWINDOW)
-      (let1 style (bitwise-ior WS_OVERLAPPEDWINDOW WS_CLIPCHILDREN)
+      (let1 style (bitwise-ior WS_OVERLAPPEDWINDOW WS_CLIPCHILDREN
+			       WS_CLIPSIBLINGS)
 	(add-style! context style))
       w))
 
@@ -408,8 +409,9 @@
   
   (define-method show ((menu-holfer <menu-bar-container>))
     (call-next-method)
-    (show (~ menu-holfer 'menu-bar))
-    (update-window (~ menu-holfer 'menu-bar 'context 'handle)))
+    (when (~ menu-holfer 'menu-bar)
+      (show (~ menu-holfer 'menu-bar))
+      (update-window (~ menu-holfer 'menu-bar 'context 'handle))))
 
   (define-method show ((container <container>))
     (call-next-method)
