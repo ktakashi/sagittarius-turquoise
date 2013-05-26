@@ -6,7 +6,6 @@
     (string-append base "." ext)))
 
 (let ((frame (make <frame> :name "Simple Edit"))
-      ;; TODO resize automatically
       (text  (make <text-area> :adjust-size #t))
       (menu  (make <menu>))
       (file  (make <menu> :name "File"))
