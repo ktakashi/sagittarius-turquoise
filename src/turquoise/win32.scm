@@ -236,7 +236,7 @@
 		(get-client-rect hwnd rc)
 		(for-each (lambda (component)
 			    (let1 hwnd (~ component 'context 'handle)
-			      (when hwnd
+			      (when (and hwnd (~ component 'adjust-size))
 				(move-window hwnd
 					     (c-struct-ref rc RECT 'left)
 					     (c-struct-ref rc RECT 'top)
