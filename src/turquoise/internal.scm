@@ -37,7 +37,10 @@
 	    ;; hooks
 	    window-close on-initialize sync-component
 	    *current-root-window*
-	    with-busy-component)
+	    with-busy-component
+	    ;; misc
+	    open-file-select
+	    )
     (import (rnrs)
 	    (clos user)
 	    (sagittarius control)
@@ -83,4 +86,14 @@
   (define-method on-initialize (c) #t)
   (define-generic sync-component)
   (define-method sync-component ((c <performable>)) (lambda (c a) #t))
+
+  (define-generic open-file-select)
+  (define-method object-apply ((select <file-select>))
+    (unless (slot-bound? select 'type)
+      (error 'file-select "type slot is not set"))
+    (open-file-select select))
+  (define-method object-apply ((select <file-select>) (w <window>))
+    (unless (slot-bound? select 'type)
+      (error 'file-select "type slot is not set"))
+    (open-file-select select w))
 )

@@ -48,7 +48,7 @@
      ;; action
      <action>
      ;; misc
-     <rgb> <rgb-color>
+     <rgb> <rgb-color> <file-select>
      ;; component synchroniser
      update-component
      )
@@ -186,4 +186,14 @@
 
   (define-method write-object ((a <action>) p)
     (format p "#<action ~a>" (~ a 'operation)))
+
+  ;; this is not component but for utility
+  (define-class <file-select> ()
+    ((title   :init-keyword :title :init-value "No title")
+     (type    :init-keyword :type) ;; user must set
+     ;; list of string
+     (filters :init-keyword :filters :init-value '("*.*"))
+     (show-readonly :init-keyword :show-read-only :init-value #f)
+     (extension :init-keyword :extension :init-value "")))
+
 )
