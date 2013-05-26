@@ -66,12 +66,12 @@
   (define-method slot-unbound ((c <class>) (o <window>) (s (eql 'y-point)))
     CW_USEDEFAULT)
 
-  (define-method %create-window ((comp <component>) owner)
+  (define (%create-window comp owner)
     (let* ((context (~ comp 'context))
 	   (id      (~ context 'id)))
       (create-window-ex (or (lookup-window-style context) 0)
 			(lookup-class-name context)
-			(~ context 'name)
+			(~ comp 'name)
 			(bitwise-ior (context-style context) 
 				     (visible-flag comp))
 			(~ comp 'x-point)
@@ -82,23 +82,6 @@
 			(if id (integer->pointer id) null-pointer)
 			hinstance
 			(object->pointer comp))))
-
-  (define-method %create-window ((menu <menu>) owner)
-    (let ((context (~ menu 'context))
-	  (children (~ menu 'children))
-	  (style   (~ menu 'style))
-	  (root-menu    (create-menu))
-	  (mii (allocate-c-struct MENUITEMINFO)))
-      (c-struct-set! mii MENUITEMINFO 'cbSize (size-of-c-struct MENUITEMINFO))
-      (c-struct-set! mii MENUITEMINFO 'fMask 
-		     (bitwise-ior MIIM_TYPE
-				  (if (null? children) 0 MIIM_SUBMENU)))
-      ;; TODO lookup menu type
-      (c-struct-set! mii MENUITEMINFO 'fType MFT_STRING)
-      (c-struct-set! mii MENUITEMINFO 'dwTypeData (~ context 'name))
-      (insert-menu-item root-menu 0 #t mii)
-      (set-menu owner root-menu)
-      root-menu))
 
   (define-macro (case/unquote obj . clauses)
     (let1 tmp (gensym)
@@ -138,6 +121,9 @@
       ((LBN_SETFOCUS)  'focus)
       ((LBN_KILLFOCUS) 'blur)
       (else op)))
+
+  ;; I have no idea whether or not menu has any other action
+  (define-method lookup-operation ((t <menu-item>) op) 'click)
 
   (define (lookup-color color)
     (case color
@@ -192,6 +178,22 @@
   
   (define-syntax ash (identifier-syntax bitwise-arithmetic-shift))
 
+  (define (search-menu w menu id)
+    (let loop ((item (~ menu 'items)))
+      (cond ((null? item) #f)
+	    ((is-a? (car item) <menu>)
+	     (or (search-menu w (car item) id)
+		 (loop (cdr item))))
+	    ((is-a? (car item) <menu-item>)
+	     (if (eqv? id (~ (car item) 'context 'id))
+		 (begin
+		   ;; set id to control-map so that next time
+		   ;; it'll be O(1)
+		   (set! (~ w 'context 'control-map id) (car item))
+		   (car item))
+		 (loop (cdr item))))
+	    (else (error 'menu-bar "menu bar contains non menu" (car item))))))
+
   (define window-proc
     (c-callback 
      void* (HWND unsigned-int WPARAM LPARAM)
@@ -231,9 +233,12 @@
 	      ;; get loword (lower 16 bits)
 	      (let* ((id (bitwise-and wparam #xFFFF))
 		     (op (bitwise-and (ash wparam -16) #xFFFF))
-		     (wd (~ (get-window hwnd) 'context 'control-map id))
-		     )
-		(when (and wd (is-a? wd <performable>))
+		     (w  (get-window hwnd))
+		     (wd (or (~ w 'context 'control-map id)
+			     (and (is-a? w <menu-bar-container>)
+				  (~ w 'menu-bar)
+				  (search-menu w (~ w 'menu-bar) id)))))
+		(when (is-a? wd <performable>)
 		  (let1 action (make <action>
 				 :control wd
 				 :operation (lookup-operation wd op))
@@ -332,6 +337,14 @@
 	       (not (~ comp 'busy)))
       (call-next-method)))
 
+  (define (%init comp)
+    (on-initialize comp)
+    ;; bit awkward solution
+    (when (is-a? comp <performable>)
+      ;; put the value retriever the first
+      (set! (~ comp 'actions) 
+	    (cons (sync-component comp) (~ comp 'actions)))))
+
   (define-method show ((comp <component>))
     (let1 context (~ comp 'context)
       (unless (~ context 'handle)
@@ -342,16 +355,40 @@
 			  (~ owner 'context 'handle)
 			  null-pointer))))
 	  (set! (~ context 'handle) hwnd)
-	  (on-initialize comp)
-	  ;; bit awkward solution
-	  (when (is-a? comp <performable>)
-	    ;; put the value retriever the first
-	    (set! (~ comp 'actions) 
-		  (cons (sync-component comp) (~ comp 'actions))))))
+	  (%init comp)))
       (when (~ comp 'visible)
 	(let1 hwnd (~ context 'handle)
 	  (show-window hwnd SW_SHOW)
 	  (update-window hwnd)))))
+
+  ;; menu
+  (define-method show ((item <menu-item>))
+    (let ((context (~ item 'context))
+	  (style   (~ item 'style))
+	  (hmenu   (~ item 'owner 'context 'handle)))
+      ;; TODO menu style
+      (append-menu hmenu MF_STRING (~ item 'context 'id) (~ item 'name))
+      (%init item)))
+
+  (define-method show ((menu <menu>))
+    (let ((context (~ menu 'context))
+	  (items   (~ menu 'items))
+	  (style   (~ menu 'style))
+	  (root?   (~ menu 'root)))
+      (let1 hmenu (if root? (create-menu) (create-popup-menu))
+	;; first set the handle
+	(set! (~ menu 'context 'handle) hmenu)
+	;; show all items
+	;; append-menu appends infront of the previous one
+	;; to show the order of append, we need to reverse it
+	(for-each show (reverse items))
+	(if root?
+	    (set-menu (~ menu 'owner 'context 'handle) hmenu)
+	    ;; TODO menu style
+	    (append-menu (~ menu 'owner 'context 'handle)
+			 (bitwise-ior MF_POPUP MF_STRING)
+			 (pointer->integer hmenu)
+			 (~ menu 'name))))))
   
   (define-method show ((menu-holfer <menu-bar-container>))
     (call-next-method)
@@ -395,6 +432,7 @@
   (define-method add! ((w <menu-bar-container>) (menu <menu>))
     (call-next-method)
     (set! (~ menu 'owner) w)
+    (set! (~ menu 'root) #t)
     (set! (~ w 'menu-bar) menu)
     ;; remove menu from components ...
     (let1 components (~ w 'components)
@@ -528,7 +566,10 @@
   (define-method initialize ((menu <menu>) initargs)
     (call-next-method))
   
-  (define-method add! ((menu <menu>) (item <menu>))
-    (push! (~ menu 'children) item))
+  (define-method add! ((menu <menu>) (item <menu-component>))
+    (set! (~ item 'owner) menu)
+    (let1 context (~ item 'context)
+      (unless (~ context 'id) (set! (~ context 'id) (generate-id))))
+    (push! (~ menu 'items) item))
 
 )

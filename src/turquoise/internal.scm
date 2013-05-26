@@ -62,13 +62,8 @@
     ((handle        :init-value #f)
      (id            :init-value #f)
      ;; data store for platform specific values
-     (platform-data :init-value ())
-     (name  :init-keyword :name :init-value "No title"
-	    :validator (lambda (o v)
-			 (unless (string? v)
-			   (assertion-violation 'window-ctx
-						"name must be string" v))
-			 v))))
+     (platform-data :init-value ())))
+
   ;; internal window context
   (define-class <window-ctx> (<component-ctx>) 
     ((control-map :init-form (make-eqv-hashtable))))

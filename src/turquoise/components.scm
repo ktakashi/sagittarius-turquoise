@@ -42,7 +42,7 @@
      ;; container widgets
      <window> <frame> <dialog>
      ;; menu
-     <menu>
+     <menu-component> <menu> <menu-item>
      ;; mixins
      <menu-bar-container> <content-panel-container> <performable>
      ;; action
@@ -62,15 +62,21 @@
   (define-class <component> () 
     ((context)
      ;; owner component, #f means root component
-     (owner   :init-keyword :owner :init-value #f)
+     (owner      :init-keyword :owner :init-value #f)
      ;; position and style
-     (x-point       :init-keyword :x-point)
-     (y-point       :init-keyword :y-point)
-     (width         :init-keyword :width)
-     (height        :init-keyword :height)
-     (style         :init-keyword :style   :init-value '())
-     (visible       :init-keyword :visible :init-value #t)
-     (background    :init-keyword :background :init-value 'white)
+     (x-point    :init-keyword :x-point)
+     (y-point    :init-keyword :y-point)
+     (width      :init-keyword :width)
+     (height     :init-keyword :height)
+     (style      :init-keyword :style   :init-value '())
+     (visible    :init-keyword :visible :init-value #t)
+     (background :init-keyword :background :init-value 'white)
+     ;; component name
+     (name  :init-keyword :name :init-value "undefined"
+	    :validator (lambda (o v)
+			 (unless (string? v)
+			   (error 'window-ctx "name must be string" v))
+			 v))
      ;; if this component is busy or not (doing something)
      (busy    :init-value #f)))
 
@@ -102,14 +108,25 @@
   (define-class <dialog> (<content-panel-container> <window>)
     ())
 
-  (define-class <menu> (<component>)
-    ;; TODO what's the standard menu for platform?
-    ((type     :init-keyword :type :init-value 'string)
-     (children :init-value '())))
-
   ;; performable have actions (procedure list)
   (define-class <performable> ()
     ((actions :init-value '())))
+
+  (define-class <menu-component> (<component>) ())
+
+  (define-class <menu> (<menu-component>)
+    ;; TODO what's the standard menu for platform?
+    ((root :init-value #f)
+     (items :init-value '()
+	    :validator (lambda (o v)
+			 (unless (for-all (cut is-a? <> <menu-component>))
+			   (error 'menu "all elements must be menu-component"
+				  v))
+			 v))))
+
+  (define-class <menu-item> (<menu-component> <performable>)
+    ;; TODO what's the standard menu for platform?
+    ((type :init-keyword :type :init-value 'string)))
 
   (define-class <button> (<component> <performable>) ())
   (define-class <radio> (<button>) ())
