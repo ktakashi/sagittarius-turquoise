@@ -429,6 +429,9 @@
 	  (context (~ w 'context)))
       (set! (~ context 'control-map id) comp)))
 
+  (define-method update-component ((w <window>))
+    (set-window-text (~ w 'context 'handle) (~ w 'name)))
+
   (define-method add! ((w <menu-bar-container>) (menu <menu>))
     (call-next-method)
     (set! (~ menu 'owner) w)
@@ -596,27 +599,25 @@
 		       0
 		       OFN_HIDEREADONLY)))
     (let ((ofn (allocate-c-struct OPENFILENAME))
-	  (name (make-bytevector 256))
-	  (title (make-bytevector 64)))
+	  (name (make-bytevector 256)))
       (c-struct-set! ofn OPENFILENAME 
 		     'lStructSize OPENFILENAME_SIZE_VERSION_400)
       (c-struct-set! ofn OPENFILENAME 'hwndOwner hwnd)
       (c-struct-set! ofn OPENFILENAME 
 		     'lpstrFilter (create-filter (~ select 'filters)))
       (c-struct-set! ofn OPENFILENAME 'lpstrFile name)
-      (c-struct-set! ofn OPENFILENAME 'lpstrFileTitle title)
+      (c-struct-set! ofn OPENFILENAME 'lpstrFileTitle null-pointer)
       (c-struct-set! ofn OPENFILENAME 'nMaxFile 256)
-      (c-struct-set! ofn OPENFILENAME 'nMaxFileTitle 64)
       (c-struct-set! ofn OPENFILENAME 'nFilterIndex 1)
       (c-struct-set! ofn OPENFILENAME 'Flags (get-flags select))
       (c-struct-set! ofn OPENFILENAME 'lpstrDefExt(~ select 'extension))
       (c-struct-set! ofn OPENFILENAME 'lpstrTitle (~ select 'title))
       (if (eq? (~ select 'type) 'open)
 	  (if (get-open-file-name ofn)
-	      (values (utf8->string title) (utf8->string name))
-	      (values #f #f))
+	      (utf8->string name)
+	      #f)
 	  (if (get-save-file-name ofn)
-	      (values (utf8->string title) (utf8->string name))
-	      (values #f #f)))))
+	      (utf8->string name)
+	      #f))))
 
 )

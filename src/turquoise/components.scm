@@ -54,12 +54,21 @@
      )
     (import (rnrs) 
 	    (clos user)
+	    (srfi :26 cut)
 	    (sagittarius)
 	    (sagittarius object)
 	    (sagittarius mop validator))
 
+
+  (define-generic update-component)
+  ;; default do nothing
+  (define-method update-component (c) #t)
+  (define (component-observer component value)
+    ;; component has value already
+    (update-component component))
+
   ;; TODO what should component have?
-  (define-class <component> () 
+  (define-class <component> (<validator-mixin>)
     ((context)
      ;; owner component, #f means root component
      (owner      :init-keyword :owner :init-value #f)
@@ -76,16 +85,10 @@
 	    :validator (lambda (o v)
 			 (unless (string? v)
 			   (error 'window-ctx "name must be string" v))
-			 v))
+			 v)
+	    :observer component-observer)
      ;; if this component is busy or not (doing something)
      (busy    :init-value #f)))
-
-  (define-generic update-component)
-  ;; default do nothing
-  (define-method update-component (c) #t)
-  (define (component-observer component value)
-    ;; component has value already
-    (update-component component))
 
   (define-class <container> (<component>)
     ;; container can contain component
@@ -119,7 +122,7 @@
     ((root :init-value #f)
      (items :init-value '()
 	    :validator (lambda (o v)
-			 (unless (for-all (cut is-a? <> <menu-component>))
+			 (unless (for-all (cut is-a? <> <menu-component>) v)
 			   (error 'menu "all elements must be menu-component"
 				  v))
 			 v))))
@@ -130,7 +133,7 @@
 
   (define-class <button> (<component> <performable>) ())
   (define-class <radio> (<button>) ())
-  (define-class <check-box> (<button> <validator-mixin>) 
+  (define-class <check-box> (<button>)
     ((checked :init-keyword :checked :init-value #f
 	      :observer component-observer)))
   (define-class <tri-state-check-box> (<check-box>) ())
