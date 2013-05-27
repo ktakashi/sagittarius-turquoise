@@ -220,6 +220,13 @@
     (syntax-rules ()
       ((_ word) (bitwise-and (ash word -16) #xFFFF))))
 
+  (define (safe-position-set! comp x y w h)
+    (with-busy-component comp
+      (set! (~ comp 'x-point) x)
+      (set! (~ comp 'y-point) y)
+      (set! (~ comp 'width)   w)
+      (set! (~ comp 'height)  h)))
+
   (define (default-window-proc hwnd imsg wparam lparam)
     (define (lookup-control w id)
       (let loop ((components (~ w 'components)))
@@ -263,17 +270,16 @@
 			       (let1 hwnd (~ component 'context 'handle)
 				 (when hwnd
 				   (when (~ component 'adjust-size)
-				     (with-busy-component component
-					 (set! (~ component 'x-point) x)
-					 (set! (~ component 'y-point) y)
-					 (set! (~ component 'width)   w)
-					 (set! (~ component 'height)  h)))
+				     (safe-position-set! component x y w h))
 				   (move-window hwnd
 						(~ component 'x-point)
 						(~ component 'y-point)
 						(~ component 'width)
 						(~ component 'height)
-						#t))))
+						#t)
+				   ;; do we need this?
+				   #;
+				   (update-component component))))
 			     (~ window 'components)))))
 	     0))
 	  ((= imsg WM_COMMAND) ; button or so?
@@ -309,8 +315,92 @@
 	  (else
 	   (def-window-proc hwnd imsg wparam lparam))))
 
-    (define (panel-proc hwnd imsg wparam lparam)
-      (default-window-proc hwnd imsg wparam lparam))
+  (define (compose-lparam low high) 
+    (integer->pointer (bitwise-ior low (ash high 16))))
+  (define (panel-proc hwnd imsg wparam lparam)
+    (let ((r (default-window-proc hwnd imsg wparam lparam))
+	  (w (get-window hwnd)))
+      (define (get-offsets word virtical?)
+	(if virtical?
+	    (values (hiword word) (loword word))
+	    (values (loword word) (hiword word))))
+      (define (set-and-move comp x y w h)
+	(safe-position-set! comp x y w h)
+	(move-window (~ comp 'context 'handle) x y w h #t))
+      (if (is-a? w <split-panel>)
+	  (cond ((= imsg WM_CREATE)
+		 ;; create cursor
+		 (update-splitter-cursor! (~ w 'context)
+					  (load-cursor null-pointer
+						       (if (~ w 'virtical)
+							   IDC_SIZEWE
+							   IDC_SIZENS)))
+		 0)
+		((= imsg WM_SIZE)
+		 (let* ((w (get-window hwnd))
+			(virtical? (~ w 'virtical))
+			(position (lookup-splitter-position (~ w 'context)))
+			(word (pointer->integer lparam))
+			(p1 (~ w 'panel1))
+			(p2 (~ w 'panel2)))
+		   
+		   (let-values (((width height) (get-offsets word virtical?)))
+		     ;; position won't be zero after it's set
+		     (when (zero? position)
+		       ;; compute it now
+		       (set! position (div height 2))
+		       (update-splitter-position! (~ w 'context) position))
+		     (when (and (not (zero? height))
+				(< height position)
+				(> height (* 10 2)))
+		       (set! position (- height 10))
+		       (update-splitter-position! (~ w 'context) position))
+		     (when (and (~ p1 'context 'handle) (~ p2 'context 'handle))
+		       (if virtical?
+			   (begin
+			     ;; confusing but width and height is
+			     ;; other way around in virtical mode
+			     (set-and-move p1 0 0 (- position 1) width)
+			     (set-and-move p2 (+ position 2) 0
+					   (- height position 2) width))
+			   (begin
+			     (set-and-move p1 0 0 width (- position 1))
+			     (set-and-move p2 0 (+ position 2) width 
+					  (- height position 2)))))))
+		 0)
+		((= imsg WM_MOUSEMOVE)
+		 ;; TODO check direction
+		 (let* ((w (get-window hwnd))
+			(virtical? (~ w 'virtical))
+			(word (pointer->integer lparam)))
+		   (let-values (((width height) (get-offsets word virtical?)))
+		     (when (> height 10)
+		       (set-cursor (lookup-splitter-cursor (~ w 'context)))
+		       (when (and (= wparam MK_LBUTTON)
+				  (lookup-splitter-moving? (~ w 'context)))
+			 (let1 rc (allocate-c-struct RECT)
+			   (get-client-rect hwnd rc)
+			   (unless (> height (if virtical?
+						 (c-struct-ref rc RECT 'right)
+						 (c-struct-ref rc RECT 'bottom)))
+			     (update-splitter-position! (~ w 'context) height)
+			     (send-message hwnd WM_SIZE 0
+					   (compose-lparam
+					     (c-struct-ref rc RECT 'right)
+					     (c-struct-ref rc RECT 'bottom)))))
+			 ))))
+		 0)
+		((= imsg WM_LBUTTONDOWN)
+		 (let1 w (get-window hwnd)
+		   (set-cursor (lookup-splitter-cursor (~ w 'context)))
+		   (update-splitter-moving?! (~ w 'context) #t)
+		   (set-capture hwnd)))
+		((= imsg WM_LBUTTONUP)
+		 (let1 w (get-window hwnd)
+		   (release-capture)
+		   (update-splitter-moving?! (~ w 'context) #f)))
+		(else r))
+	  r)))
 
   (define *window-proc*
     (c-callback void* (HWND unsigned-int WPARAM LPARAM) default-window-proc))
@@ -414,7 +504,8 @@
 	;; owner component
 	(let1 owner (~ comp 'owner)
 	  (when owner
-	    (send-message (~ owner 'context 'handle) WM_SIZE 0 null-pointer)))
+	    (send-message (~ owner 'context 'handle) WM_SIZE 0
+			  (compose-lparam (~ owner 'width) (~ owner 'height)))))
 	(unless (or (= (~ comp 'x-point) CW_USEDEFAULT)
 		    (= (~ comp 'y-point) CW_USEDEFAULT)
 		    (= (~ comp 'width)  CW_USEDEFAULT)
@@ -536,22 +627,66 @@
 	(add-style! context style))))
 
   (define-method update-component ((p <panel>))
-    (define (compose-lparam low high) (bitwise-ior low (ash high 16)))
     ;; for adjust size, we need to send WM_SIZE to owner window
     (let1 owner (~ p 'owner)
-      (when (and owner (~ owner 'context 'handle))
+      (when (and owner (~ owner 'context 'handle)
+		 (not (~ owner 'busy)))
 	(let ((width (~ owner 'width))
 	      (height (~ owner 'height)))
 	  (send-message (~ owner 'context 'handle) WM_SIZE 0
-			(integer->pointer (compose-lparam width height))))))
+			(compose-lparam width height)))))
     ;; send WM_SIZE message to this panel for the compoenents
-    (let1 rc (allocate-c-struct RECT)
-      (get-client-rect (~ p 'context 'handle) rc)
-      (send-message (~ p 'context 'handle) WM_SIZE 0
-		    (integer->pointer 
-		     (compose-lparam (c-struct-ref rc RECT 'right)
-				     (c-struct-ref rc RECT 'bottom))))))
+    (send-message (~ p 'context 'handle) WM_SIZE 0
+		  (compose-lparam (~ p 'width) (~ p 'height))))
 
+  (define-platform-data splitter-moving?)
+  (define-platform-data splitter-position)
+  (define-platform-data splitter-cursor)
+  (define-method initialize ((p <split-panel>) initargs)
+    (call-next-method)
+    ;; the background color will be border's color
+    (set! (~ p 'background) (get-keyword :background initargs 'light-gray))
+    (let1 context (~ p 'context)
+      (update-splitter-moving?! context #f)
+      ;; later
+      (add-splitter-position! context 0)
+      (add-splitter-cursor! context #f)))
+
+  (define-method add! ((p <split-panel>) o)
+    (error 'split-panel
+	   "attempt to add component to split panel itself." o))
+
+  (define-method add! ((p <split-panel>) (n (eqv? 1)) (c <component>))
+    (add! (~ p 'panel1) c))
+  (define-method add! ((p <split-panel>) (n (eqv? 2)) (c <component>))
+    (add! (~ p 'panel2) c))
+
+  ;; FIXME
+  (define-method show ((sp <split-panel>))
+    (call-next-method)
+    (let* ((panel (~ sp 'panel1))
+	   (context (~ panel 'context)))
+      (update-style! context (bitwise-ior WS_CHILD (context-style context)))
+      (set! (~ panel 'owner) sp))
+    (let* ((panel (~ sp 'panel2))
+	   (context (~ panel 'context)))
+      (update-style! context (bitwise-ior WS_CHILD (context-style context)))
+      (set! (~ panel 'owner) sp))
+    (show (~ sp 'panel1))
+    (show (~ sp 'panel2))
+    (let1 rc (allocate-c-struct RECT)
+      (get-client-rect (~ sp 'context 'handle) rc)
+      (send-message (~ sp 'context 'handle) WM_SIZE 0
+		    (compose-lparam (c-struct-ref rc RECT 'right)
+				    (c-struct-ref rc RECT 'bottom)))))
+
+  (define-method update-component ((sp <split-panel>))
+    (update-component (~ sp 'panel1))
+    (update-component (~ sp 'panel2))
+    (send-message (~ sp 'context 'handle) WM_SIZE 0
+		  (compose-lparam (~ sp 'width) (~ sp 'height)))
+    )
+  
   (define (lookup-button-style style)
     (case style
       ((push)  	   BS_PUSHBUTTON)

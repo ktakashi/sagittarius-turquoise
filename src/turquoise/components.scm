@@ -40,7 +40,7 @@
      <item> <list-item>
      <scroll>
      ;; container widgets
-     <window> <frame> <dialog> <panel>
+     <window> <frame> <dialog> <panel> <split-panel>
      ;; menu
      <menu-component> <menu> <menu-item>
      ;; mixins
@@ -83,7 +83,8 @@
 		  :observer component-observer)
      (style      :init-keyword :style   :init-value '())
      (visible    :init-keyword :visible :init-value #t)
-     (background :init-keyword :background :init-value 'white)
+     (background :init-keyword :background :init-value 'white
+		 :observer component-observer)
      ;; component name
      (name  :init-keyword :name :init-value "undefined"
 	    :validator (lambda (o v)
@@ -117,6 +118,11 @@
 
   ;; panel is not a window but container
   (define-class <panel> (<container>) ())
+  ;; split-panel have 2 empty panel
+  (define-class <split-panel> (<panel>)
+    ((panel1 :init-keyword :panel1 :init-form (make <panel>))
+     (panel2 :init-keyword :panel2 :init-form (make <panel>))
+     (virtical :init-keyword :virtical :init-value #f)))
 
   ;; performable have actions (procedure list)
   (define-class <performable> ()
