@@ -460,7 +460,7 @@
 
   (define-method sync-component ((comp <text>))
     (lambda (component action)
-      (when (eq? (~ action 'operation) 'update)
+      (when (eq? (~ action 'action) 'update)
 	;; whatever action will update the value
 	(with-busy-component comp
 	  (let* ((hwnd (~ comp 'context 'handle))
@@ -473,7 +473,7 @@
 
   (define-method sync-component ((comp <check-box>))
     (lambda (component action)
-      (when (eq? (~ action 'operation) 'click)
+      (when (eq? (~ action 'action) 'click)
 	;; whatever action will update the value
 	(with-busy-component comp
 	  (let* ((hwnd (~ comp 'context 'handle))
@@ -486,7 +486,7 @@
 
   (define-method sync-component ((comp <list-box>))
     (lambda (component action)
-      (when (eq? (~ action 'operation) 'selection-change)
+      (when (eq? (~ action 'action) 'selection-change)
 	;; whatever action will update the value
 	(with-busy-component comp
 	  (let* ((hwnd (~ comp 'context 'handle))
