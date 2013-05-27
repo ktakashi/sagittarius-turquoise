@@ -521,6 +521,12 @@
 	(safe-move-window comp (~ comp 'x-point) (~ comp 'y-point)
 			  (~ comp 'width) (~ comp 'height))))
 
+  (define (%show comp)
+    (let1 hwnd (~ comp 'context 'handle)
+      (set! (~ comp 'visible) #t)
+      (show-window hwnd SW_SHOW)
+      (update-window hwnd)))
+
   (define (%init comp)
     (on-initialize comp)
     ;; bit awkward solution
@@ -531,19 +537,17 @@
 
   (define-method show ((comp <component>))
     (let1 context (~ comp 'context)
-      (unless (~ context 'handle)
-	(let* ((owner (~ comp 'owner))
-	       (hwnd (%create-window
-		      comp 
-		      (if owner 
-			  (~ owner 'context 'handle)
-			  null-pointer))))
-	  (set! (~ context 'handle) hwnd)
-	  (%init comp)))
-      (when (~ comp 'visible)
-	(let1 hwnd (~ context 'handle)
-	  (show-window hwnd SW_SHOW)
-	  (update-window hwnd)))))
+      (if (~ context 'handle)
+	  (%show comp)
+	  (let* ((owner (~ comp 'owner))
+		 (hwnd (%create-window
+			comp 
+			(if owner 
+			    (~ owner 'context 'handle)
+			    null-pointer))))
+	    (set! (~ context 'handle) hwnd)
+	    (%init comp)
+	    (when (~ comp 'visible) (%show comp))))))
 
   ;; menu
   (define-method show ((item <menu-item>))

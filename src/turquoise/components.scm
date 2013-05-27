@@ -100,7 +100,7 @@
     ((components :init-keyword :components :init-value '())))
 
   ;; what should this class have?
-  (define-class <window> (<container>) ()
+  (define-class <window> (<container>)
     ((handlers :init-value '())))
 
   ;; mixins
