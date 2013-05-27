@@ -40,7 +40,7 @@
      <item> <list-item>
      <scroll>
      ;; container widgets
-     <window> <frame> <dialog>
+     <window> <frame> <dialog> <panel>
      ;; menu
      <menu-component> <menu> <menu-item>
      ;; mixins
@@ -73,13 +73,14 @@
      ;; owner component, #f means root component
      (owner      :init-keyword :owner :init-value #f)
      ;; position and style
-     (x-point    :init-keyword :x-point)
-     (y-point    :init-keyword :y-point)
-     (width      :init-keyword :width)
-     (height     :init-keyword :height)
+     (x-point    :init-keyword :x-point :observer component-observer)
+     (y-point    :init-keyword :y-point :observer component-observer)
+     (width      :init-keyword :width :observer component-observer)
+     (height     :init-keyword :height :observer component-observer)
      ;; bad naming, this actually adjust component size to
      ;; parent component size!
-     (adjust-size :init-keyword :adjust-size :init-value #f)
+     (adjust-size :init-keyword :adjust-size :init-value #f
+		  :observer component-observer)
      (style      :init-keyword :style   :init-value '())
      (visible    :init-keyword :visible :init-value #t)
      (background :init-keyword :background :init-value 'white)
@@ -113,6 +114,9 @@
 
   (define-class <dialog> (<content-panel-container> <window>)
     ())
+
+  ;; panel is not a window but container
+  (define-class <panel> (<container>) ())
 
   ;; performable have actions (procedure list)
   (define-class <performable> ()

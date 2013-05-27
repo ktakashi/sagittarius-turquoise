@@ -194,107 +194,147 @@
 		 (loop (cdr item))))
 	    (else (error 'menu-bar "menu bar contains non menu" (car item))))))
 
-  (define window-proc
-    (c-callback 
-     void* (HWND unsigned-int WPARAM LPARAM)
-     (lambda (hwnd imsg wparam lparam)
-       (define (get-window hwnd)
-	 (let1 p (get-window-long-ptr hwnd GWLP_USERDATA)
-	   (if (null-pointer? p)
-	       #f
-	       (pointer->object p))))
-       (define (lookup-control w id)
-	 (let loop ((components (~ w 'components)))
-	   (cond ((null? components) #f)
-		 ((= (~ (car components) 'context 'id) id) (car components))
-		 (else (loop (cdr components))))))
-       (cond ((= imsg WM_CREATE)
-	      ;; save the lpCreateParams of CREATESTRUCT
-	      (let1 w (c-struct-ref lparam CREATESTRUCT 'lpCreateParams)
-		(set-window-long-ptr hwnd GWLP_USERDATA w)
-		1))
-	     ((= imsg WM_ERASEBKGND)
-	      (let* ((rect (allocate-c-struct RECT))
-		     (hdc (get-dc hwnd))
-		     (hbrush 
-		      (get-stock-object
-		       (lookup-color (~ (get-window hwnd) 'background)))))
-		(get-update-rect hwnd rect #f)
-		(fill-rect hdc rect hbrush)
-		1))
-	     ((= imsg WM_CLOSE) (window-close (get-window hwnd)))
-	     ((= imsg WM_DESTROY)
-	      (let1 w (get-window hwnd)
-		(cond ((and (not (~ w 'owner))
-			    (eq? w (*current-root-window*)))
-		       (post-quit-message 0) 0)
-		      (else 1))))
-	     ((= imsg WM_SIZE)
-	      (let ((rc (allocate-c-struct RECT)))
-		;; make components which have adjust-size #t to the size of
-		;; this component
-		(get-client-rect hwnd rc)
-		(for-each (lambda (component)
-			    (let1 hwnd (~ component 'context 'handle)
-			      (when (and hwnd (~ component 'adjust-size))
-				(move-window hwnd
-					     (c-struct-ref rc RECT 'left)
-					     (c-struct-ref rc RECT 'top)
-					     (c-struct-ref rc RECT 'right)
-					     (c-struct-ref rc RECT 'bottom)
-					     #t))))
-			  (~ (get-window hwnd) 'components))
-		0))
-	     ((= imsg WM_COMMAND) ; button or so?
-	      ;; get loword (lower 16 bits)
-	      (let* ((id (bitwise-and wparam #xFFFF))
-		     (op (bitwise-and (ash wparam -16) #xFFFF))
-		     (w  (get-window hwnd))
-		     (wd (or (~ w 'context 'control-map id)
-			     (and (is-a? w <menu-bar-container>)
-				  (~ w 'menu-bar)
-				  (search-menu w (~ w 'menu-bar) id)))))
-		(when (is-a? wd <performable>)
-		  (let1 action (make <action>
-				 :control wd
-				 :operation (lookup-operation wd op))
-		    (for-each (^p (p wd action)) (~ wd 'actions))))))
-	     ((or (= imsg WM_CTLCOLORSTATIC)
-		  (= imsg WM_CTLCOLOREDIT))
-	      (or (and-let* ((control (lookup-control 
-				       (get-window hwnd)
-				       (pointer->integer (get-window-long-ptr
-							  lparam GWLP_ID))))
-			     (hdc (integer->pointer wparam))
-			     (c (~ control 'color)))
-		    (set-text-color hdc (rgb (~ c 'r) (~ c 'g) (~ c 'b)))
-		    (set-bk-mode hdc TRANSPARENT)
-		    (pointer->integer
-		     (get-stock-object (lookup-color (~ control 'background)))))
-		  (def-window-proc hwnd imsg wparam lparam)))
-	     ((= imsg WM_CTLCOLORBTN)
-	      (def-window-proc hwnd imsg wparam lparam)
-	      ;;(pointer->integer (get-stock-object BLACK_BRUSH))
-	      )
-	     (else
-	      (def-window-proc hwnd imsg wparam lparam))))))
+  ;; will use
+  (define (get-window hwnd)
+    (let1 p (get-window-long-ptr hwnd GWLP_USERDATA)
+      (if (null-pointer? p)
+	  #f
+	  (pointer->object p))))
+
+  (define-syntax loword
+    (syntax-rules ()
+      ((_ word) (bitwise-and word #xFFFF))))
+  (define-syntax hiword
+    (syntax-rules ()
+      ((_ word) (bitwise-and (ash word -16) #xFFFF))))
+
+  (define (default-window-proc hwnd imsg wparam lparam)
+    (define (lookup-control w id)
+      (let loop ((components (~ w 'components)))
+	(cond ((null? components) #f)
+	      ((= (~ (car components) 'context 'id) id) (car components))
+	      (else (loop (cdr components))))))
+    (cond ((= imsg WM_CREATE)
+	   ;; save the lpCreateParams of CREATESTRUCT
+	   (let1 w (c-struct-ref lparam CREATESTRUCT 'lpCreateParams)
+	     (set-window-long-ptr hwnd GWLP_USERDATA w)
+	     1))
+	  ((= imsg WM_ERASEBKGND)
+	   (let* ((rect (allocate-c-struct RECT))
+		  (hdc (get-dc hwnd))
+		  (hbrush 
+		   (get-stock-object
+		    (lookup-color (~ (get-window hwnd) 'background)))))
+	     (get-update-rect hwnd rect #f)
+	     (fill-rect hdc rect hbrush)
+	     1))
+	  ((= imsg WM_CLOSE) (window-close (get-window hwnd)))
+	  ((= imsg WM_DESTROY)
+	   (let1 w (get-window hwnd)
+	     (cond ((and (not (~ w 'owner))
+			 (eq? w (*current-root-window*)))
+		    (post-quit-message 0) 0)
+		   (else 1))))
+	  ((= imsg WM_SIZE)
+	   (let ((rc (allocate-c-struct RECT)))
+	     ;; make components which have adjust-size #t to the size of
+	     ;; this component
+	     (get-client-rect hwnd rc)
+	     ;; get size
+	     (let1 window (get-window hwnd)
+	       (with-busy-component window
+		 (let ((x (c-struct-ref rc RECT 'left))
+		       (y (c-struct-ref rc RECT 'top))
+		       (w (c-struct-ref rc RECT 'right))
+		       (h (c-struct-ref rc RECT 'bottom)))
+		   (set! (~ window 'width)   w)
+		   (set! (~ window 'height)  h)
+		   (for-each (lambda (component)
+			       (let1 hwnd (~ component 'context 'handle)
+				 (when hwnd
+				   (when (~ component 'adjust-size)
+				     (with-busy-component component
+					 (set! (~ component 'x-point) x)
+					 (set! (~ component 'y-point) y)
+					 (set! (~ component 'width)   w)
+					 (set! (~ component 'height)  h)))
+				   (move-window hwnd
+						(~ component 'x-point)
+						(~ component 'y-point)
+						(~ component 'width)
+						(~ component 'height)
+						#t))))
+			     (~ window 'components)))))
+	     0))
+	  ((= imsg WM_COMMAND) ; button or so?
+	   ;; get loword (lower 16 bits)
+	   (let* ((id (loword wparam))
+		  (op (hiword wparam))
+		  (w  (get-window hwnd))
+		  (wd (or (~ w 'context 'control-map id)
+			  (and (is-a? w <menu-bar-container>)
+			       (~ w 'menu-bar)
+			       (search-menu w (~ w 'menu-bar) id)))))
+	     (when (is-a? wd <performable>)
+	       (let1 action (make <action>
+			      :control wd
+			      :operation (lookup-operation wd op))
+		 (for-each (^p (p wd action)) (~ wd 'actions))))))
+	  ((or (= imsg WM_CTLCOLORSTATIC)
+	       (= imsg WM_CTLCOLOREDIT))
+	   (or (and-let* ((control (lookup-control 
+				    (get-window hwnd)
+				    (pointer->integer (get-window-long-ptr
+						       lparam GWLP_ID))))
+			  (hdc (integer->pointer wparam))
+			  (c (~ control 'color)))
+		 (set-text-color hdc (rgb (~ c 'r) (~ c 'g) (~ c 'b)))
+		 (set-bk-mode hdc TRANSPARENT)
+		 (pointer->integer
+		  (get-stock-object (lookup-color (~ control 'background)))))
+	       (def-window-proc hwnd imsg wparam lparam)))
+	  ((= imsg WM_CTLCOLORBTN)
+	   (def-window-proc hwnd imsg wparam lparam)
+	   ;;(pointer->integer (get-stock-object BLACK_BRUSH))
+	   )
+	  (else
+	   (def-window-proc hwnd imsg wparam lparam))))
+
+    (define (panel-proc hwnd imsg wparam lparam)
+      (default-window-proc hwnd imsg wparam lparam))
+
+  (define *window-proc*
+    (c-callback void* (HWND unsigned-int WPARAM LPARAM) default-window-proc))
+
+  (define *panel-proc*
+    (c-callback void* (HWND unsigned-int WPARAM LPARAM) panel-proc))
+
   ;; register window-class
   (define *window-class-name* "turquoise-window")
-  (let ((wnd (allocate-c-struct WNDCLASSEX)))
-    (let-syntax ((wnd-set! (syntax-rules ()
-			     ((_ p v) (c-struct-set! wnd WNDCLASSEX 'p v)))))
-      (wnd-set! cbSize (size-of-c-struct WNDCLASSEX))
-      (wnd-set! lpfnWndProc window-proc)
-      (wnd-set! style (bitwise-ior CS_HREDRAW CS_VREDRAW))
-      (wnd-set! hInstance hinstance)
-      (wnd-set! hIcon (load-icon null-pointer IDI_APPLICATION))
-      (wnd-set! hCursor (load-cursor null-pointer IDC_ARROW))
-      (wnd-set! hbrBackground (get-stock-object WHITE_BRUSH))
-      (wnd-set! lpszClassName *window-class-name*)
-      (wnd-set! hIconSm null-pointer)
-      (when (zero? (register-class-ex wnd))
-	(error 'make-window "Failed to register WNDCLASS"))))
+  (define *panel-class-name*  "turquoise-panel")
+  
+  (define-syntax register-window-class
+    (syntax-rules ()
+      ((_ class-name proc)
+       (let ((wnd (allocate-c-struct WNDCLASSEX)))
+	 (let-syntax ((wnd-set! 
+		       (syntax-rules ()
+			 ((_ p v) (c-struct-set! wnd WNDCLASSEX 'p v)))))
+	   (wnd-set! cbSize (size-of-c-struct WNDCLASSEX))
+	   (wnd-set! lpfnWndProc proc)
+	   (wnd-set! style (bitwise-ior CS_HREDRAW CS_VREDRAW))
+	   (wnd-set! hInstance hinstance)
+	   (wnd-set! hIcon (load-icon null-pointer IDI_APPLICATION))
+	   (wnd-set! hCursor (load-cursor null-pointer IDC_ARROW))
+	   (wnd-set! hbrBackground (get-stock-object WHITE_BRUSH))
+	   (wnd-set! lpszClassName class-name)
+	   (wnd-set! hIconSm null-pointer)
+	   (when (zero? (register-class-ex wnd))
+	     (error 'make-window "Failed to register WNDCLASS")))))))
 
+  (register-window-class *window-class-name* *window-proc*)
+  (register-window-class *panel-class-name*  *panel-proc*)
+  
   (define-method make-window ((w <window>))
     (let1 context (~ w 'context)
       (add-class-name! context *window-class-name*)
@@ -353,6 +393,29 @@
 	       (~ comp 'context 'handle)
 	       (not (~ comp 'busy)))
       (call-next-method)))
+
+  ;; should we put this in :after or :around?
+  ;; to make :after work
+  (define-method update-component ((comp <component>)) #f)
+  ;; updator after
+  (define-method update-component :after ((comp <component>))
+    ;; for all component properties such as point or size
+    (if (~ comp 'adjust-size)
+	;; if adjust-size is #t then the size is depending on the
+	;; owner component
+	(let1 owner (~ comp 'owner)
+	  (when owner
+	    (send-message (~ owner 'context 'handle) WM_SIZE 0 null-pointer)))
+	(unless (or (= (~ comp 'x-point) CW_USEDEFAULT)
+		    (= (~ comp 'y-point) CW_USEDEFAULT)
+		    (= (~ comp 'width)  CW_USEDEFAULT)
+		    (= (~ comp 'height) CW_USEDEFAULT))
+	  (move-window (~ comp 'context 'handle)
+		       (~ comp 'x-point)
+		       (~ comp 'y-point)
+		       (~ comp 'width)
+		       (~ comp 'height)
+		       #t))))
 
   (define (%init comp)
     (on-initialize comp)
@@ -415,7 +478,9 @@
 
   (define-method show ((container <container>))
     (call-next-method)
-    (for-each show (~ container 'components)))
+    (for-each show (~ container 'components))
+    ;; for panel ...
+    (update-component container))
 
   (define-method hide ((comp <component>))
     (let1 hwnd (~ comp 'context 'handle)
@@ -437,15 +502,10 @@
     (set! (~ comp 'owner) container)
     (let1 context (~ comp 'context)
       (update-style! context (bitwise-ior WS_CHILD (context-style context)))
-      (unless (~ context 'id) (set! (~ context 'id) (generate-id))))
+      (unless (~ context 'id) (set! (~ context 'id) (generate-id)))
+      (let1 id (~ comp 'context 'id)
+	(set! (~ container 'context 'control-map id) comp)))
     (push! (~ container 'components) comp))
-
-  (define-method add! ((w <window>) (comp <component>))
-    ;; do super method first otherwise id is not set yet.
-    (call-next-method)
-    (let ((id (~ comp 'context 'id))
-	  (context (~ w 'context)))
-      (set! (~ context 'control-map id) comp)))
 
   (define-method update-component ((w <window>))
     (set-window-text (~ w 'context 'handle) (~ w 'name)))
@@ -457,8 +517,31 @@
     (set! (~ w 'menu-bar) menu)
     ;; remove menu from components ...
     (let1 components (~ w 'components)
-      (set! (~ w 'components) (remove menu components)))
-    )
+      (set! (~ w 'components) (remove menu components))))
+
+  (define-method initialize ((p <panel>) initargs)
+    (call-next-method)
+    (let1 context (~ p 'context)
+      (add-class-name! context *panel-class-name*)
+      (let1 style (bitwise-ior WS_CLIPCHILDREN WS_CLIPSIBLINGS)
+	(add-style! context style))))
+
+  (define-method update-component ((p <panel>))
+    (define (compose-lparam low high) (bitwise-ior low (ash high 16)))
+    ;; for adjust size, we need to send WM_SIZE to owner window
+    (let1 owner (~ p 'owner)
+      (when (and owner (~ owner 'context 'handle))
+	(let ((width (~ owner 'width))
+	      (height (~ owner 'height)))
+	  (send-message (~ owner 'context 'handle) WM_SIZE 0
+			(integer->pointer (compose-lparam width height))))))
+    ;; send WM_SIZE message to this panel for the compoenents
+    (let1 rc (allocate-c-struct RECT)
+      (get-client-rect (~ p 'context 'handle) rc)
+      (send-message (~ p 'context 'handle) WM_SIZE 0
+		    (integer->pointer 
+		     (compose-lparam (c-struct-ref rc RECT 'right)
+				     (c-struct-ref rc RECT 'bottom))))))
 
   (define (lookup-button-style style)
     (case style

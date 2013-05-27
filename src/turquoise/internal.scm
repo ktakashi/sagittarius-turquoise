@@ -65,11 +65,11 @@
     ((handle        :init-value #f)
      (id            :init-value #f)
      ;; data store for platform specific values
-     (platform-data :init-value ())))
+     (platform-data :init-value ())
+     (control-map :init-form (make-eqv-hashtable))))
 
   ;; internal window context
-  (define-class <window-ctx> (<component-ctx>) 
-    ((control-map :init-form (make-eqv-hashtable))))
+  (define-class <window-ctx> (<component-ctx>) ())
 
   (define-generic make-window)
   ;; set given window visible
