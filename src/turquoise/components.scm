@@ -45,8 +45,8 @@
      <menu-component> <menu> <menu-item>
      ;; mixins
      <menu-bar-container> <content-panel-container> <performable>
-     ;; action
-     <action>
+     ;; event
+     <event>
      ;; misc
      <rgb> <rgb-color> <file-select>
      ;; component synchroniser
@@ -100,7 +100,8 @@
     ((components :init-keyword :components :init-value '())))
 
   ;; what should this class have?
-  (define-class <window> (<container>) ())
+  (define-class <window> (<container>) ()
+    ((handlers :init-value '())))
 
   ;; mixins
   (define-class <content-panel-container> ()
@@ -196,12 +197,12 @@
   (define-class <label>     (<component> <rgb-color>) 
     ((text  :init-keyword :text :init-value "" :observer component-observer)))
 
-  (define-class <action> ()
-    ((control   :init-keyword :control)
-     (operation :init-keyword :operation)))
-
-  (define-method write-object ((a <action>) p)
-    (format p "#<action ~a>" (~ a 'operation)))
+  (define-class <event> ()
+    ((control :init-keyword :control)
+     (action  :init-keyword :action)))
+  
+  (define-method write-object ((a <event>) p)
+    (format p "#<event ~a>" (~ a 'action)))
 
   ;; this is not component but for utility
   (define-class <file-select> ()

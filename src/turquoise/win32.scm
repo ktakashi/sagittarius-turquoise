@@ -97,14 +97,14 @@
 	   `(else ,@body))))
       `(let ((,tmp ,obj))
 	 (cond ,@(map expand-clause clauses)))))
-  (define-method lookup-operation ((b <button>) op)
+  (define-method lookup-action ((b <button>) op)
     (case/unquote op
       ((BN_CLICKED) 'click)
       ((BN_DOUBLECLICKED) 'double-click)
       ((BN_SETFOCUS) 'focus)
       ((BN_KILLFOCUS) 'blur)
       (else op)))
-  (define-method lookup-operation ((t <text>) op)
+  (define-method lookup-action ((t <text>) op)
     (case/unquote op
       ((EN_SETFOCUS) 'focus)
       ((EN_KILLFOCUS) 'blur)
@@ -113,7 +113,7 @@
       ((EN_HSCROLL) 'horizontal-scroll)
       ((EN_VSCROLL) 'virtical-scroll)
       (else op)))
-  (define-method lookup-operation ((t <list-box>) op)
+  (define-method lookup-action ((t <list-box>) op)
     (case/unquote op
       ((LBN_SELCHANGE) 'selection-change)
       ((LBN_DBLCLK)    'double-click)
@@ -123,7 +123,7 @@
       (else op)))
 
   ;; I have no idea whether or not menu has any other action
-  (define-method lookup-operation ((t <menu-item>) op) 'click)
+  (define-method lookup-action ((t <menu-item>) op) 'click)
 
   (define *color-table* (make-eqv-hashtable))
   (define (lookup-color color)
@@ -239,6 +239,10 @@
 	(cond ((null? components) #f)
 	      ((= (~ (car components) 'context 'id) id) (car components))
 	      (else (loop (cdr components))))))
+    (define (get-handler w action)
+      (let1 handlers (~ w 'handlers)
+	(cond ((assq action handlers) => cdr)
+	      (else (lambda (c) #t)))))
     (cond ((= imsg WM_CREATE)
 	   ;; save the lpCreateParams of CREATESTRUCT
 	   (let1 w (c-struct-ref lparam CREATESTRUCT 'lpCreateParams)
@@ -251,7 +255,11 @@
 	     (get-update-rect hwnd rect #f)
 	     (fill-rect hdc rect hbrush)
 	     1))
-	  ((= imsg WM_CLOSE) (window-close (get-window hwnd)))
+	  ((= imsg WM_CLOSE)
+	   (let1 w (get-window hwnd)
+	     (and-let* ((handler (get-handler w 'close))
+			( (handler w) ))
+	       (window-close w))))
 	  ((= imsg WM_DESTROY)
 	   (let1 w (get-window hwnd)
 	     (cond ((and (not (~ w 'owner))
@@ -297,10 +305,9 @@
 			       (~ w 'menu-bar)
 			       (search-menu w (~ w 'menu-bar) id)))))
 	     (when (is-a? wd <performable>)
-	       (let1 action (make <action>
-			      :control wd
-			      :operation (lookup-operation wd op))
-		 (for-each (^p (p wd action)) (~ wd 'actions))))))
+	       (let1 event (make <event>
+			     :control wd :action (lookup-action wd op))
+		 (for-each (^p (p wd event)) (~ wd 'actions))))))
 	  ((or (= imsg WM_CTLCOLORSTATIC)
 	       (= imsg WM_CTLCOLOREDIT))
 	   (or (and-let* ((control (lookup-control 
@@ -603,6 +610,9 @@
       (let1 id (~ comp 'context 'id)
 	(set! (~ container 'context 'control-map id) comp)))
     (push! (~ container 'components) comp))
+
+  (define-method add! ((w <window>) (action <symbol>)(handler <procedure>))
+    (push! (~ w 'handlers) (cons action handler)))
 
   (define-method update-component ((w <window>))
     (set-window-text (~ w 'context 'handle) (~ w 'name)))
