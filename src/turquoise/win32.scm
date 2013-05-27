@@ -125,15 +125,27 @@
   ;; I have no idea whether or not menu has any other action
   (define-method lookup-operation ((t <menu-item>) op) 'click)
 
+  (define *color-table* (make-eqv-hashtable))
   (define (lookup-color color)
-    (case color
-      ((white) WHITE_BRUSH)
-      ((black) BLACK_BRUSH)
-      ((gray)  GRAY_BRUSH)
-      ((light-gray) LTGRAY_BRUSH)
-      ((dark-gray) DKGRAY_BRUSH)
-      ((empty)     HOLLOW_BRUSH)
-      (else WHITE_BRUSH)))
+    (cond ((symbol? color)
+	   ;; lookup stock object
+	   (get-stock-object (case color
+				((white) WHITE_BRUSH)
+				((black) BLACK_BRUSH)
+				((gray)  GRAY_BRUSH)
+				((light-gray) LTGRAY_BRUSH)
+				((dark-gray) DKGRAY_BRUSH)
+				((empty)     HOLLOW_BRUSH)
+				(else WHITE_BRUSH))))
+	  ((is-a? color <rgb>)
+	   (let1 c (rgb (~ color 'r) (~ color 'g) (~ color 'b))
+	     (cond ((~ *color-table* c))
+		   (else
+		    (let1 brush (create-solid-brush c)
+		      (set! (~ *color-table* c) brush)
+		      brush)))))
+	  (else
+	   (error 'color "symbol or <rgb> object required" color))))
 
   (define (add-specific! context name value)
     (push! (~ context 'platform-data) (cons name value)))
@@ -222,9 +234,7 @@
 	  ((= imsg WM_ERASEBKGND)
 	   (let* ((rect (allocate-c-struct RECT))
 		  (hdc (get-dc hwnd))
-		  (hbrush 
-		   (get-stock-object
-		    (lookup-color (~ (get-window hwnd) 'background)))))
+		  (hbrush (lookup-color (~ (get-window hwnd) 'background))))
 	     (get-update-rect hwnd rect #f)
 	     (fill-rect hdc rect hbrush)
 	     1))
@@ -290,8 +300,7 @@
 			  (c (~ control 'color)))
 		 (set-text-color hdc (rgb (~ c 'r) (~ c 'g) (~ c 'b)))
 		 (set-bk-mode hdc TRANSPARENT)
-		 (pointer->integer
-		  (get-stock-object (lookup-color (~ control 'background)))))
+		 (pointer->integer (lookup-color (~ control 'background))))
 	       (def-window-proc hwnd imsg wparam lparam)))
 	  ((= imsg WM_CTLCOLORBTN)
 	   (def-window-proc hwnd imsg wparam lparam)
