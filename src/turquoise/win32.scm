@@ -226,6 +226,12 @@
       (set! (~ comp 'y-point) y)
       (set! (~ comp 'width)   w)
       (set! (~ comp 'height)  h)))
+  (define (safe-move-window comp x y w h)
+    (unless (or (= x CW_USEDEFAULT)
+		(= y CW_USEDEFAULT)
+		(= w CW_USEDEFAULT)
+		(= h CW_USEDEFAULT))
+      (move-window (~ comp 'context 'handle) x y w h #t)))
 
   (define (default-window-proc hwnd imsg wparam lparam)
     (define (lookup-control w id)
@@ -271,12 +277,11 @@
 				 (when hwnd
 				   (when (~ component 'adjust-size)
 				     (safe-position-set! component x y w h))
-				   (move-window hwnd
-						(~ component 'x-point)
-						(~ component 'y-point)
-						(~ component 'width)
-						(~ component 'height)
-						#t)
+				   (safe-move-window component
+						     (~ component 'x-point)
+						     (~ component 'y-point)
+						     (~ component 'width)
+						     (~ component 'height))
 				   ;; do we need this?
 				   #;
 				   (update-component component))))
@@ -326,7 +331,7 @@
 	    (values (loword word) (hiword word))))
       (define (set-and-move comp x y w h)
 	(safe-position-set! comp x y w h)
-	(move-window (~ comp 'context 'handle) x y w h #t))
+	(safe-move-window comp  x y w h))
       (if (is-a? w <split-panel>)
 	  (cond ((= imsg WM_CREATE)
 		 ;; create cursor
@@ -506,16 +511,8 @@
 	  (when owner
 	    (send-message (~ owner 'context 'handle) WM_SIZE 0
 			  (compose-lparam (~ owner 'width) (~ owner 'height)))))
-	(unless (or (= (~ comp 'x-point) CW_USEDEFAULT)
-		    (= (~ comp 'y-point) CW_USEDEFAULT)
-		    (= (~ comp 'width)  CW_USEDEFAULT)
-		    (= (~ comp 'height) CW_USEDEFAULT))
-	  (move-window (~ comp 'context 'handle)
-		       (~ comp 'x-point)
-		       (~ comp 'y-point)
-		       (~ comp 'width)
-		       (~ comp 'height)
-		       #t))))
+	(safe-move-window comp (~ comp 'x-point) (~ comp 'y-point)
+			  (~ comp 'width) (~ comp 'height))))
 
   (define (%init comp)
     (on-initialize comp)
