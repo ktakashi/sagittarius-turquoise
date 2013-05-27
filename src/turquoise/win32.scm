@@ -307,7 +307,8 @@
 	     (when (is-a? wd <performable>)
 	       (let1 event (make <event>
 			     :control wd :action (lookup-action wd op))
-		 (for-each (^p (p wd event)) (~ wd 'actions))))))
+		 (with-busy-component wd
+		   (for-each (^p (p wd event)) (~ wd 'actions)))))))
 	  ((or (= imsg WM_CTLCOLORSTATIC)
 	       (= imsg WM_CTLCOLOREDIT))
 	   (or (and-let* ((control (lookup-control 
@@ -695,8 +696,7 @@
     (update-component (~ sp 'panel1))
     (update-component (~ sp 'panel2))
     (send-message (~ sp 'context 'handle) WM_SIZE 0
-		  (compose-lparam (~ sp 'width) (~ sp 'height)))
-    )
+		  (compose-lparam (~ sp 'width) (~ sp 'height))))
   
   (define (lookup-button-style style)
     (case style
@@ -707,8 +707,7 @@
       ((push-box)  BS_PUSHBOX)
       (else        BS_PUSHBUTTON)))
 
-  (define (context-style context)
-    (or (lookup-style context) 0))
+  (define (context-style context) (or (lookup-style context) 0))
 
   (define-method initialize ((comp <button>) initargs)
     (call-next-method)

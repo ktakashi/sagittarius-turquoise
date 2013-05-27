@@ -194,7 +194,7 @@
     ((value :init-keyword :value :init-value "" :observer component-observer)))
   (define-class <text-area> (<text>) ())
 
-  (define-class <label>     (<component> <rgb-color>) 
+  (define-class <label>     (<component> <rgb-color>)
     ((text  :init-keyword :text :init-value "" :observer component-observer)))
 
   (define-class <event> ()
