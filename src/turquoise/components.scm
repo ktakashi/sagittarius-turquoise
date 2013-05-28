@@ -40,13 +40,15 @@
      <item> <list-item>
      <scroll>
      ;; container widgets
-     <window> <frame> <dialog> <panel> <split-panel>
+     <window> <frame> <dialog> <panel>
      ;; menu
      <menu-component> <menu> <menu-item>
      ;; mixins
      <menu-bar-container> <content-panel-container> <performable>
      ;; event
      <event>
+     ;; cursor
+     <cursor>
      ;; misc
      <rgb> <rgb-color> <file-select>
      ;; component synchroniser
@@ -101,7 +103,7 @@
 
   ;; what should this class have?
   (define-class <window> (<container>)
-    ((handlers :init-value '())))
+    ((handlers :init-form (make-eq-hashtable))))
 
   ;; mixins
   (define-class <content-panel-container> ()
@@ -117,17 +119,14 @@
   (define-class <dialog> (<content-panel-container> <window>)
     ())
 
-  ;; panel is not a window but container
-  (define-class <panel> (<container>) ())
-  ;; split-panel have 2 empty panel
-  (define-class <split-panel> (<panel>)
-    ((panel1 :init-keyword :panel1 :init-form (make <panel>))
-     (panel2 :init-keyword :panel2 :init-form (make <panel>))
-     (virtical :init-keyword :virtical :init-value #f)))
-
   ;; performable have actions (procedure list)
   (define-class <performable> ()
-    ((actions :init-value '())))
+    ;; key = action name (eg click)
+    ;; value = procedure accepts 2 arguments (component event)
+    ((actions :init-form (make-eq-hashtable))))
+
+  ;; panel is not a window but container
+  (define-class <panel> (<container> <performable>) ())
 
   (define-class <menu-component> (<component>) ())
 
@@ -199,10 +198,17 @@
 
   (define-class <event> ()
     ((control :init-keyword :control)
-     (action  :init-keyword :action)))
+     (action  :init-keyword :action)
+     ;; event data
+     ;; on Windows, this is only for <panel> class.
+     (data    :init-keyword :data :init-value '())))
   
   (define-method write-object ((a <event>) p)
     (format p "#<event ~a>" (~ a 'action)))
+
+  ;; TODO what more do we need?
+  (define-class <cursor> ()
+    ((handle :init-keyword :handle)))
 
   ;; this is not component but for utility
   (define-class <file-select> ()

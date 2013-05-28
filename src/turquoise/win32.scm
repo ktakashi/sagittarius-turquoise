@@ -72,7 +72,10 @@
       (create-window-ex (or (lookup-window-style context) 0)
 			(lookup-class-name context)
 			(~ comp 'name)
-			(bitwise-ior (context-style context) 
+			(bitwise-ior (if (null-pointer? owner)
+					 0
+					 WS_CHILD)
+				     (context-style context) 
 				     (visible-flag comp))
 			(~ comp 'x-point)
 			(~ comp 'y-point)
@@ -220,18 +223,13 @@
     (syntax-rules ()
       ((_ word) (bitwise-and (ash word -16) #xFFFF))))
 
-  (define (safe-position-set! comp x y w h)
-    (with-busy-component comp
-      (set! (~ comp 'x-point) x)
-      (set! (~ comp 'y-point) y)
-      (set! (~ comp 'width)   w)
-      (set! (~ comp 'height)  h)))
   (define (safe-move-window comp x y w h)
-    (unless (or (= x CW_USEDEFAULT)
-		(= y CW_USEDEFAULT)
-		(= w CW_USEDEFAULT)
-		(= h CW_USEDEFAULT))
-      (move-window (~ comp 'context 'handle) x y w h #t)))
+    (when (~ comp' context 'handle)
+      (unless (or (= x CW_USEDEFAULT)
+		  (= y CW_USEDEFAULT)
+		  (= w CW_USEDEFAULT)
+		  (= h CW_USEDEFAULT))
+	(move-window (~ comp 'context 'handle) x y w h #t))))
 
   (define (default-window-proc hwnd imsg wparam lparam)
     (define (lookup-control w id)
@@ -239,10 +237,6 @@
 	(cond ((null? components) #f)
 	      ((= (~ (car components) 'context 'id) id) (car components))
 	      (else (loop (cdr components))))))
-    (define (get-handler w action)
-      (let1 handlers (~ w 'handlers)
-	(cond ((assq action handlers) => cdr)
-	      (else (lambda (c) #t)))))
     (cond ((= imsg WM_CREATE)
 	   ;; save the lpCreateParams of CREATESTRUCT
 	   (let1 w (c-struct-ref lparam CREATESTRUCT 'lpCreateParams)
@@ -257,8 +251,7 @@
 	     1))
 	  ((= imsg WM_CLOSE)
 	   (let1 w (get-window hwnd)
-	     (and-let* ((handler (get-handler w 'close))
-			( (handler w) ))
+	     (when (w (make <event> :control w :action 'close))
 	       (window-close w))))
 	  ((= imsg WM_DESTROY)
 	   (let1 w (get-window hwnd)
@@ -305,10 +298,9 @@
 			       (~ w 'menu-bar)
 			       (search-menu w (~ w 'menu-bar) id)))))
 	     (when (is-a? wd <performable>)
-	       (let1 event (make <event>
-			     :control wd :action (lookup-action wd op))
+	       (let1 action (lookup-action wd op)
 		 (with-busy-component wd
-		   (for-each (^p (p wd event)) (~ wd 'actions)))))))
+		   (wd (make <event> :control wd :action action)))))))
 	  ((or (= imsg WM_CTLCOLORSTATIC)
 	       (= imsg WM_CTLCOLOREDIT))
 	   (or (and-let* ((control (lookup-control 
@@ -330,94 +322,75 @@
 
   (define (compose-lparam low high) 
     (integer->pointer (bitwise-ior low (ash high 16))))
+
+  (define-method resize-component ((c <component>) width height)
+    (send-message (~ c 'context 'handle) WM_SIZE 0
+		  (compose-lparam width height)))
+  (define-method move-component ((c <component>) x y w h)
+    (safe-move-window c x y w h))
+
+  (define-method create-cursor ((type <symbol>))
+    (define (lookup-cursor type)
+      (case type
+	;; todo add
+	((size-ns) IDC_SIZENS)
+	((size-we) IDC_SIZEWE)
+	(else IDC_ARROW)))
+    (make <cursor> :handle (load-cursor null-pointer (lookup-cursor type))))
+  (define-method set-cursor! ((c <component>) (cursor <cursor>))
+    (set-cursor (~ cursor 'handle)))
+  (define-method capture-component ((c <component>))
+    (set-capture (~ c 'context 'handle)))
+  (define-method uncapture-component ((c <component>)) (release-capture))
+
   (define (panel-proc hwnd imsg wparam lparam)
     (let ((r (default-window-proc hwnd imsg wparam lparam))
 	  (w (get-window hwnd)))
-      (define (get-offsets word virtical?)
-	(if virtical?
-	    (values (hiword word) (loword word))
-	    (values (loword word) (hiword word))))
-      (define (set-and-move comp x y w h)
-	(safe-position-set! comp x y w h)
-	(safe-move-window comp  x y w h))
-      (if (is-a? w <split-panel>)
-	  (cond ((= imsg WM_CREATE)
-		 ;; create cursor
-		 (update-splitter-cursor! (~ w 'context)
-					  (load-cursor null-pointer
-						       (if (~ w 'virtical)
-							   IDC_SIZEWE
-							   IDC_SIZENS)))
-		 0)
-		((= imsg WM_SIZE)
-		 (let* ((w (get-window hwnd))
-			(virtical? (~ w 'virtical))
-			(position (lookup-splitter-position (~ w 'context)))
-			(word (pointer->integer lparam))
-			(p1 (~ w 'panel1))
-			(p2 (~ w 'panel2)))
-		   
-		   (let-values (((width height) (get-offsets word virtical?)))
-		     ;; position won't be zero after it's set
-		     (when (zero? position)
-		       ;; compute it now
-		       (set! position (div height 2))
-		       (update-splitter-position! (~ w 'context) position))
-		     (when (and (not (zero? height))
-				(< height position)
-				(> height (* 10 2)))
-		       (set! position (- height 10))
-		       (update-splitter-position! (~ w 'context) position))
-		     (when (and (~ p1 'context 'handle) (~ p2 'context 'handle))
-		       (if virtical?
-			   (begin
-			     ;; confusing but width and height is
-			     ;; other way around in virtical mode
-			     (set-and-move p1 0 0 (- position 1) width)
-			     (set-and-move p2 (+ position 2) 0
-					   (- height position 2) width))
-			   (begin
-			     (set-and-move p1 0 0 width (- position 1))
-			     (set-and-move p2 0 (+ position 2) width 
-					  (- height position 2)))))))
-		 0)
-		((= imsg WM_MOUSEMOVE)
-		 ;; TODO check direction
-		 (let* ((w (get-window hwnd))
-			(virtical? (~ w 'virtical))
-			(word (pointer->integer lparam)))
-		   (let-values (((width height) (get-offsets word virtical?)))
-		     (when (> height 10)
-		       (set-cursor (lookup-splitter-cursor (~ w 'context)))
-		       (when (and (= wparam MK_LBUTTON)
-				  (lookup-splitter-moving? (~ w 'context)))
-			 (let1 rc (allocate-c-struct RECT)
-			   (get-client-rect hwnd rc)
-			   (unless (> height (if virtical?
-						 (c-struct-ref rc RECT 'right)
-						 (c-struct-ref rc RECT 'bottom)))
-			     (update-splitter-position! (~ w 'context) height)
-			     (send-message hwnd WM_SIZE 0
-					   (compose-lparam
-					     (c-struct-ref rc RECT 'right)
-					     (c-struct-ref rc RECT 'bottom)))))
-			 ))))
-		 0)
-		((= imsg WM_LBUTTONDOWN)
-		 (let1 w (get-window hwnd)
-		   (set-cursor (lookup-splitter-cursor (~ w 'context)))
-		   (update-splitter-moving?! (~ w 'context) #t)
-		   (set-capture hwnd)))
-		((= imsg WM_LBUTTONUP)
-		 (let1 w (get-window hwnd)
-		   (release-capture)
-		   (update-splitter-moving?! (~ w 'context) #f)))
-		(else r))
-	  r)))
-
+      (define (lookup-event imsg)
+	(case/unquote imsg
+	  ((WM_SIZE) 'resize)
+	  ((WM_MOUSEMOVE)   'mouse-move)
+	  ((WM_LBUTTONDOWN) 'mouse-down)
+	  ((WM_LBUTTONUP)   'mouse-up)
+	  ;; TODO
+	  (else #f)))
+      (define (create-data event wparam lparam)
+	(define mk-control (list MK_CONTROL MK_LBUTTON MK_MBUTTON
+				 MK_RBUTTON MK_SHIFT MK_XBUTTON1
+				 MK_XBUTTON2))
+	(define (create-mouse-states wparam)
+	  (let loop ((controls mk-control) (r '()))
+	    (if (null? controls)
+		r
+		(loop (cdr controls)
+		      (case/unquote (bitwise-and wparam (car controls))
+			((MK_CONTROL)  (cons 'control r))
+			((MK_LBUTTON)  (cons 'left r))
+			((MK_MBUTTON)  (cons 'middle r))
+			((MK_RBUTTON)  (cons 'right r))
+			((MK_SHIFT)    (cons 'shift r))
+			;; ???
+			((MK_XBUTTON1) (cons 'x-button1 r))
+			((MK_XBUTTON2) (cons 'x-button2 r))
+			(else r))))))
+	(case event
+	  ((resize mouse-move)
+	   (let* ((word (pointer->integer lparam))
+		  (w (loword word))
+		  (h (hiword word)))
+	     `((width . ,w) (height . ,h)
+	       . ,(if (eq? event 'mouse-move)
+		      `((button ,(create-mouse-states wparam)))
+		      '()))))
+	  (else '())))
+      (define (create-event sp event wparam lparam)
+	(make <event> :control sp :action event
+	      :data (create-data event wparam lparam)))
+      (when (and w (~ w 'context 'handle))
+	(w (create-event w (lookup-event imsg) wparam lparam)))
+      r))
   (define *window-proc*
     (c-callback void* (HWND unsigned-int WPARAM LPARAM) default-window-proc))
-
   (define *panel-proc*
     (c-callback void* (HWND unsigned-int WPARAM LPARAM) panel-proc))
 
@@ -459,43 +432,40 @@
 	(add-style! context style))
       w))
 
+  (define-method sync-action ((t <text>)) 'update)
   (define-method sync-component ((comp <text>))
     (lambda (component action)
-      (when (eq? (~ action 'action) 'update)
-	;; whatever action will update the value
-	(with-busy-component comp
-	  (let* ((hwnd (~ comp 'context 'handle))
-		 (len  (pointer->integer
-			(send-message hwnd WM_GETTEXTLENGTH 0 null-pointer)))
-		 (buf  (make-bytevector len)))
-	    (send-message hwnd WM_GETTEXT (+ len 1) buf)
-	    ;; UTF8?
-	    (set! (~ comp 'value) (utf8->string buf)))))))
+      (with-busy-component comp
+	(let* ((hwnd (~ comp 'context 'handle))
+	       (len  (pointer->integer
+		      (send-message hwnd WM_GETTEXTLENGTH 0 null-pointer)))
+	       (buf  (make-bytevector len)))
+	  (send-message hwnd WM_GETTEXT (+ len 1) buf)
+	  ;; UTF8?
+	  (set! (~ comp 'value) (utf8->string buf))))))
 
+  (define-method sync-action ((cb <check-box>)) 'click)
   (define-method sync-component ((comp <check-box>))
     (lambda (component action)
-      (when (eq? (~ action 'action) 'click)
-	;; whatever action will update the value
-	(with-busy-component comp
-	  (let* ((hwnd (~ comp 'context 'handle))
-		 (ret  (pointer->integer
-			(send-message hwnd BM_GETCHECK 0 null-pointer))))
-	    (set! (~ comp 'checked)
-		  (cond ((= ret BST_CHECKED) #t)
-			((= ret BST_UNCHECKED) #f)
-			((= ret BST_INDETERMINATE) '()))))))))
+      (with-busy-component comp
+	(let* ((hwnd (~ comp 'context 'handle))
+	       (ret  (pointer->integer
+		      (send-message hwnd BM_GETCHECK 0 null-pointer))))
+	  (set! (~ comp 'checked)
+		(cond ((= ret BST_CHECKED) #t)
+		      ((= ret BST_UNCHECKED) #f)
+		      ((= ret BST_INDETERMINATE) '())))))))
 
+  (define-method sync-action ((lb <list-box>)) 'selection-change)
   (define-method sync-component ((comp <list-box>))
     (lambda (component action)
-      (when (eq? (~ action 'action) 'selection-change)
-	;; whatever action will update the value
-	(with-busy-component comp
-	  (let* ((hwnd (~ comp 'context 'handle))
-		 (index (send-message hwnd LB_GETCURSEL 0 null-pointer))
-		 (item  (send-message hwnd LB_GETITEMDATA 
-				      (pointer->integer index) null-pointer)))
-	    (set! (~ component 'selected) (pointer->object item)))))))
-
+      (with-busy-component comp
+	(let* ((hwnd (~ comp 'context 'handle))
+	       (index (send-message hwnd LB_GETCURSEL 0 null-pointer))
+	       (item  (send-message hwnd LB_GETITEMDATA 
+				    (pointer->integer index) null-pointer)))
+	  (set! (~ component 'selected) (pointer->object item))))))
+  
   ;; initialise
   (define-method on-initialize ((comp <component>))
     (update-component comp))
@@ -530,11 +500,10 @@
 
   (define (%init comp)
     (on-initialize comp)
-    ;; bit awkward solution
     (when (is-a? comp <performable>)
-      ;; put the value retriever the first
-      (set! (~ comp 'actions) 
-	    (cons (sync-component comp) (~ comp 'actions)))))
+      (let1 action (sync-action comp)
+	(when action
+	  (add! comp action (sync-component comp))))))
 
   (define-method show ((comp <component>))
     (let1 context (~ comp 'context)
@@ -616,9 +585,6 @@
 	(set! (~ container 'context 'control-map id) comp)))
     (push! (~ container 'components) comp))
 
-  (define-method add! ((w <window>) (action <symbol>)(handler <procedure>))
-    (push! (~ w 'handlers) (cons action handler)))
-
   (define-method update-component ((w <window>))
     (set-window-text (~ w 'context 'handle) (~ w 'name)))
 
@@ -651,9 +617,10 @@
     (send-message (~ p 'context 'handle) WM_SIZE 0
 		  (compose-lparam (~ p 'width) (~ p 'height))))
 
-  (define-platform-data splitter-moving?)
-  (define-platform-data splitter-position)
-  (define-platform-data splitter-cursor)
+  ;;(define-platform-data splitter-moving?)
+  ;;(define-platform-data splitter-position)
+  ;;(define-platform-data splitter-cursor)
+  #;
   (define-method initialize ((p <split-panel>) initargs)
     (call-next-method)
     ;; the background color will be border's color
@@ -664,16 +631,8 @@
       (add-splitter-position! context 0)
       (add-splitter-cursor! context #f)))
 
-  (define-method add! ((p <split-panel>) o)
-    (error 'split-panel
-	   "attempt to add component to split panel itself." o))
-
-  (define-method add! ((p <split-panel>) (n (eqv? 1)) (c <component>))
-    (add! (~ p 'panel1) c))
-  (define-method add! ((p <split-panel>) (n (eqv? 2)) (c <component>))
-    (add! (~ p 'panel2) c))
-
   ;; FIXME
+  #;
   (define-method show ((sp <split-panel>))
     (call-next-method)
     (let* ((panel (~ sp 'panel1))
@@ -692,6 +651,7 @@
 		    (compose-lparam (c-struct-ref rc RECT 'right)
 				    (c-struct-ref rc RECT 'bottom)))))
 
+  #;
   (define-method update-component ((sp <split-panel>))
     (update-component (~ sp 'panel1))
     (update-component (~ sp 'panel2))
@@ -740,9 +700,6 @@
 			  BST_INDETERMINATE))
 		    null-pointer)
       (update-window hwnd)))
-
-  (define-method add! ((p <performable>) (proc <procedure>))
-    (push! (~ p 'actions) proc))
 
   (define (lookup-edit-style styles)
     (fold-left bitwise-ior 0 (map (^(style)

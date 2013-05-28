@@ -1,6 +1,6 @@
 ;;; -*- mode:scheme; coding:utf-8; -*-
 ;;;
-;;; turquoise - Sagittarius GUI library.
+;;; turquoise/extension - Extra components
 ;;;  
 ;;;   Copyright (c) 2010-2013  Takashi Kato  <ktakashi@ymail.com>
 ;;;   
@@ -27,23 +27,6 @@
 ;;;   NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 ;;;   SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ;;;  
-
-;; use R7RS define-library to separate platform specific by library.
-;; how could R6RS can do this?
-(define-library (turquoise)
+(library (turquoise extensions)
     (export :all)
-    ;; only import doesn't hurt so much
-    (import (only (sagittarius) import)
-	    (turquoise components)
-	    (turquoise interface))
-    (cond-expand
-     ((or windows cygwin)
-      ;; import Win32 methods
-      (import (turquoise win32)))
-     (else
-      (import (only (rnrs) quote)
-	      (only (core errors) implementation-restriction-violation))
-      (implementation-restriction-violation 
-       'turquoise "Currently it supports only Win32 API.")))
-    ;; extra components
-    (import (turquoise extensions)))
+    (import (turquoise extensions split-panel)))

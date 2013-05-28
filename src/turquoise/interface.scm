@@ -31,6 +31,17 @@
 (library (turquoise interface)
     (export show hide add! button-style text-style
 	    visible? on-initialize sync-component
+	    ;; some others
+	    default-action sync-action
+	    ;; low level
+	    resize-component
+	    move-component
+	    create-cursor
+	    set-cursor!
+	    capture-component
+	    uncapture-component
+	    safe-position-set!
+
 	    ;; hooks
 	    window-close)
     (import (rnrs)

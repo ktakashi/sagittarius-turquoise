@@ -34,8 +34,19 @@
     (export <component-ctx> <window-ctx>
 	    make-window show hide message-loop
 	    add!
+	    ;; low level
+	    resize-component
+	    move-component
+	    create-cursor
+	    set-cursor!
+	    capture-component
+	    uncapture-component
+	    safe-position-set!
+
 	    ;; hooks
-	    window-close on-initialize sync-component
+	    window-close on-initialize
+	    default-action
+	    sync-component sync-action
 	    *current-root-window*
 	    with-busy-component
 	    ;; misc
@@ -58,6 +69,13 @@
 	     (begin body ...)
 	   (set! (~ c 'busy) #f))))))
 
+  (define (safe-position-set! comp x y w h)
+    (with-busy-component comp
+      (set! (~ comp 'x-point) x)
+      (set! (~ comp 'y-point) y)
+      (set! (~ comp 'width)   w)
+      (set! (~ comp 'height)  h)))
+
   (define *current-root-window* (make-parameter #f))
 
   (define-class <component-ctx> (<validator-mixin>)
@@ -78,7 +96,58 @@
   ;; loop
   (define-generic message-loop)
 
+  ;; default action name
+  (define-generic default-action)
+  (define-method default-action ((c <component>))
+    ;; for better error message
+    (error 'default-action "given component doesn't have default action" c))
+  (define-method default-action ((b <button>)) 'click)
+  (define-method default-action ((w <window>)) 'close)
+
+  ;; sync action
+  ;; this method will be use for synchronise a component
+  (define-generic sync-action)
+  ;; default no synchroisation
+  (define-method sync-action ((c <component>)) #f)
+
   (define-generic add!)
+  ;; add action handler can be generic so put it here
+  (define-method add! ((p <performable>) (proc <procedure>))
+    (add! p (default-action p) proc))
+  (define-method add! ((p <performable>) (action <symbol>) (proc <procedure>))
+    (hashtable-update! (~ p 'actions) action
+		       (lambda (old) 
+			 (if old
+			     ;; concatenate the old action
+			     (lambda (c a) (old c a) (proc c a))
+			     proc)) #f))
+  ;; for window handler
+  (define-method add! ((w <window>) (handler <procedure>))
+    (add! w (default-action w) handler))
+  (define-method add! ((w <window>) (action <symbol>)(handler <procedure>))
+    (hashtable-update! (~ w 'handlers) action
+		       (lambda (old) 
+			 (if old
+			     ;; concatenate the old action
+			     (lambda (c a) (old c a) (handler c a))
+			     handler)) #f))
+  ;; performable apply
+  (define-method object-apply ((p <performable>) (e <event>))
+    (cond ((~ (~ p 'actions) (~ e 'action))
+	   => (lambda (proc) (proc p e)))
+	  (else #t)))
+
+  (define-method object-apply ((w <window>) (e <event>))
+    (cond ((~ (~ w 'handlers) (~ e 'action))
+	   => (lambda (proc) (proc w e)))
+	  (else #t)))
+  ;; low level
+  (define-generic resize-component)
+  (define-generic move-component)
+  (define-generic create-cursor)
+  (define-generic set-cursor!)
+  (define-generic capture-component)
+  (define-generic uncapture-component)
 
   ;; hooks
   (define-generic window-close)
