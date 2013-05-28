@@ -103,6 +103,7 @@
     (error 'default-action "given component doesn't have default action" c))
   (define-method default-action ((b <button>)) 'click)
   (define-method default-action ((w <window>)) 'close)
+  (define-method default-action ((b <menu-item>)) 'click)
 
   ;; sync action
   ;; this method will be use for synchronise a component
