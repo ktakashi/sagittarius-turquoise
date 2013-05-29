@@ -612,47 +612,6 @@
     ;; send WM_SIZE message to this panel for the compoenents
     (send-message (~ p 'context 'handle) WM_SIZE 0
 		  (compose-lparam (~ p 'width) (~ p 'height))))
-
-  ;;(define-platform-data splitter-moving?)
-  ;;(define-platform-data splitter-position)
-  ;;(define-platform-data splitter-cursor)
-  #;
-  (define-method initialize ((p <split-panel>) initargs)
-    (call-next-method)
-    ;; the background color will be border's color
-    (set! (~ p 'background) (get-keyword :background initargs 'light-gray))
-    (let1 context (~ p 'context)
-      (update-splitter-moving?! context #f)
-      ;; later
-      (add-splitter-position! context 0)
-      (add-splitter-cursor! context #f)))
-
-  ;; FIXME
-  #;
-  (define-method show ((sp <split-panel>))
-    (call-next-method)
-    (let* ((panel (~ sp 'panel1))
-	   (context (~ panel 'context)))
-      (update-style! context (bitwise-ior WS_CHILD (context-style context)))
-      (set! (~ panel 'owner) sp))
-    (let* ((panel (~ sp 'panel2))
-	   (context (~ panel 'context)))
-      (update-style! context (bitwise-ior WS_CHILD (context-style context)))
-      (set! (~ panel 'owner) sp))
-    (show (~ sp 'panel1))
-    (show (~ sp 'panel2))
-    (let1 rc (allocate-c-struct RECT)
-      (get-client-rect (~ sp 'context 'handle) rc)
-      (send-message (~ sp 'context 'handle) WM_SIZE 0
-		    (compose-lparam (c-struct-ref rc RECT 'right)
-				    (c-struct-ref rc RECT 'bottom)))))
-
-  #;
-  (define-method update-component ((sp <split-panel>))
-    (update-component (~ sp 'panel1))
-    (update-component (~ sp 'panel2))
-    (send-message (~ sp 'context 'handle) WM_SIZE 0
-		  (compose-lparam (~ sp 'width) (~ sp 'height))))
   
   (define (lookup-button-style style)
     (case style
@@ -727,8 +686,10 @@
   (define-method update-component ((comp <text>))
     ;; set default text here
     (let1 hwnd (~ comp 'context 'handle)
-      (send-message hwnd WM_SETTEXT 0 (string->utf16 (~ comp 'value)
-						     (endianness native)))
+      (send-message hwnd WM_SETTEXT 0 
+		    (bytevector-append
+		     (string->utf16 (~ comp 'value) (endianness native))
+		     #vu8(0 0)))
       (update-window hwnd)))
 
   (define-method initialize ((text <text-area>) initargs)
