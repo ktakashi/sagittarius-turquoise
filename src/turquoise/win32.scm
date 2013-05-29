@@ -566,7 +566,7 @@
   (define-method message-loop ((w <window>))
     (let ((msg (allocate-c-struct MSG)))
       (let loop ((m (get-message msg null-pointer 0 0)))
-	(when m
+	(when (> m 0)
 	  (translate-message msg)
 	  (dispatch-message msg)
 	  (loop (get-message msg null-pointer 0 0))))
