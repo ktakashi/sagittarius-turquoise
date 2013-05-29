@@ -297,10 +297,11 @@
 			  (and (is-a? w <menu-bar-container>)
 			       (~ w 'menu-bar)
 			       (search-menu w (~ w 'menu-bar) id)))))
-	     (when (is-a? wd <performable>)
-	       (let1 action (lookup-action wd op)
-		 (with-busy-component wd
-		   (wd (make <event> :control wd :action action)))))))
+	     (with-busy-component w
+	       (when (is-a? wd <performable>)
+		 (let1 action (lookup-action wd op)
+		   (with-busy-component wd
+		     (wd (make <event> :control wd :action action))))))))
 	  ((or (= imsg WM_CTLCOLORSTATIC)
 	       (= imsg WM_CTLCOLOREDIT))
 	   (or (and-let* ((control (lookup-control 
@@ -686,6 +687,11 @@
   (define-method update-component ((comp <text>))
     ;; set default text here
     (let1 hwnd (~ comp 'context 'handle)
+      (set-window-text hwnd
+		       (bytevector-append
+			(string->utf16 (~ comp 'value) (endianness native))
+			#vu8(0 0)))
+      #;
       (send-message hwnd WM_SETTEXT 0 
 		    (bytevector-append
 		     (string->utf16 (~ comp 'value) (endianness native))
