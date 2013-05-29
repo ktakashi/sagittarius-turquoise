@@ -435,36 +435,32 @@
   (define-method sync-action ((t <text>)) 'update)
   (define-method sync-component ((comp <text>))
     (lambda (component action)
-      (with-busy-component comp
-	(let* ((hwnd (~ comp 'context 'handle))
-	       (len  (pointer->integer
-		      (send-message hwnd WM_GETTEXTLENGTH 0 null-pointer)))
-	       (buf  (make-bytevector len)))
-	  (send-message hwnd WM_GETTEXT (+ len 1) buf)
-	  ;; UTF8?
-	  (set! (~ comp 'value) (utf8->string buf))))))
+      (let* ((hwnd (~ comp 'context 'handle))
+	     (len  (pointer->integer
+		    (send-message hwnd WM_GETTEXTLENGTH 0 null-pointer)))
+	     (buf  (make-bytevector (* len 2))))
+	(send-message hwnd WM_GETTEXT (+ len 2) buf)
+	(set! (~ comp 'value) (utf16->string buf (endianness native))))))
 
   (define-method sync-action ((cb <check-box>)) 'click)
   (define-method sync-component ((comp <check-box>))
     (lambda (component action)
-      (with-busy-component comp
-	(let* ((hwnd (~ comp 'context 'handle))
-	       (ret  (pointer->integer
-		      (send-message hwnd BM_GETCHECK 0 null-pointer))))
-	  (set! (~ comp 'checked)
-		(cond ((= ret BST_CHECKED) #t)
-		      ((= ret BST_UNCHECKED) #f)
-		      ((= ret BST_INDETERMINATE) '())))))))
+      (let* ((hwnd (~ comp 'context 'handle))
+	     (ret  (pointer->integer
+		    (send-message hwnd BM_GETCHECK 0 null-pointer))))
+	(set! (~ comp 'checked)
+	      (cond ((= ret BST_CHECKED) #t)
+		    ((= ret BST_UNCHECKED) #f)
+		    ((= ret BST_INDETERMINATE) '()))))))
 
   (define-method sync-action ((lb <list-box>)) 'selection-change)
   (define-method sync-component ((comp <list-box>))
     (lambda (component action)
-      (with-busy-component comp
-	(let* ((hwnd (~ comp 'context 'handle))
-	       (index (send-message hwnd LB_GETCURSEL 0 null-pointer))
-	       (item  (send-message hwnd LB_GETITEMDATA 
-				    (pointer->integer index) null-pointer)))
-	  (set! (~ component 'selected) (pointer->object item))))))
+      (let* ((hwnd (~ comp 'context 'handle))
+	     (index (send-message hwnd LB_GETCURSEL 0 null-pointer))
+	     (item  (send-message hwnd LB_GETITEMDATA 
+				  (pointer->integer index) null-pointer)))
+	(set! (~ component 'selected) (pointer->object item)))))
   
   ;; initialise
   (define-method on-initialize ((comp <component>))
@@ -731,7 +727,8 @@
   (define-method update-component ((comp <text>))
     ;; set default text here
     (let1 hwnd (~ comp 'context 'handle)
-      (send-message hwnd WM_SETTEXT 0 (~ comp 'value))
+      (send-message hwnd WM_SETTEXT 0 (string->utf16 (~ comp 'value)
+						     (endianness native)))
       (update-window hwnd)))
 
   (define-method initialize ((text <text-area>) initargs)
