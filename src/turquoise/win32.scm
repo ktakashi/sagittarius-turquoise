@@ -2,7 +2,7 @@
 ;;;
 ;;; turquoise/win32 - Win32 implementation.
 ;;;  
-;;;   Copyright (c) 2010-2013  Takashi Kato  <ktakashi@ymail.com>
+;;;   Copyright (c) 2010-2015  Takashi Kato  <ktakashi@ymail.com>
 ;;;   
 ;;;   Redistribution and use in source and binary forms, with or without
 ;;;   modification, are permitted provided that the following conditions
@@ -777,7 +777,7 @@
     (let ((ofn (allocate-c-struct OPENFILENAME))
 	  (name (make-bytevector 256)))
       (c-struct-set! ofn OPENFILENAME 
-		     'lStructSize OPENFILENAME_SIZE_VERSION_400)
+		     'lStructSize (size-of-c-struct OPENFILENAME))
       (c-struct-set! ofn OPENFILENAME 'hwndOwner hwnd)
       (c-struct-set! ofn OPENFILENAME 
 		     'lpstrFilter (create-filter (~ select 'filters)))
